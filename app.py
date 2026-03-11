@@ -752,9 +752,24 @@ def generate_supplement_recommendations(profile: UserProfile) -> List[str]:
 # Custom CSS for game-like UI
 st.markdown("""
 <style>
-/* Full page vibrant background */
+/* Animated vibrant background */
+@keyframes gradientShift {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+/* Full page vibrant animated background */
 .stApp {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #667eea);
+    background-size: 400% 400%;
+    animation: gradientShift 15s ease infinite;
     min-height: 100vh;
 }
 
