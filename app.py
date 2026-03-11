@@ -43,11 +43,9 @@ class UserProfile:
 @dataclass
 class LiftInputs:
     bench_5rm: float
-    squat_5rm: float
-    deadlift_5rm: float
-    overhead_press_5rm: float
     barbell_row_5rm: float
     pullups_reps: int
+    strict_pushups_reps: int
 
 
 # =========================
@@ -194,27 +192,20 @@ def get_target_profile(target_build: str) -> Dict[str, float]:
 def compute_strength_score(profile: UserProfile, lifts: LiftInputs) -> Tuple[float, Dict[str, float]]:
     bw = profile.weight_lb if profile.weight_lb > 0 else 1
     bench_1rm = estimate_1rm_from_5rm(lifts.bench_5rm)
-    squat_1rm = estimate_1rm_from_5rm(lifts.squat_5rm)
-    deadlift_1rm = estimate_1rm_from_5rm(lifts.deadlift_5rm)
-    ohp_1rm = estimate_1rm_from_5rm(lifts.overhead_press_5rm)
     row_1rm = estimate_1rm_from_5rm(lifts.barbell_row_5rm)
 
     ratios = {
         "Bench/BW": bench_1rm / bw,
-        "Squat/BW": squat_1rm / bw,
-        "Deadlift/BW": deadlift_1rm / bw,
-        "OHP/BW": ohp_1rm / bw,
         "Row/BW": row_1rm / bw,
-        "Pull-Ups": lifts.pullups_reps
+        "Pull-Ups": lifts.pullups_reps,
+        "Push-Ups": lifts.strict_pushups_reps
     }
 
     score_parts = [
         normalize_ratio_score(ratios["Bench/BW"], 0.75, 1.5),
-        normalize_ratio_score(ratios["Squat/BW"], 1.0, 2.25),
-        normalize_ratio_score(ratios["Deadlift/BW"], 1.25, 2.75),
-        normalize_ratio_score(ratios["OHP/BW"], 0.45, 0.95),
         normalize_ratio_score(ratios["Row/BW"], 0.60, 1.25),
         normalize_ratio_score(ratios["Pull-Ups"], 0, 15),
+        normalize_ratio_score(ratios["Push-Ups"], 0, 50),
     ]
 
     score = statistics.mean(score_parts) * get_training_multiplier(profile.training_age)
@@ -243,24 +234,18 @@ def compute_recovery_score(profile: UserProfile) -> float:
 def compute_balance_score(profile: UserProfile, lifts: LiftInputs) -> float:
     bench_1rm = estimate_1rm_from_5rm(lifts.bench_5rm)
     row_1rm = estimate_1rm_from_5rm(lifts.barbell_row_5rm)
-    squat_1rm = estimate_1rm_from_5rm(lifts.squat_5rm)
-    deadlift_1rm = estimate_1rm_from_5rm(lifts.deadlift_5rm)
-    ohp_1rm = estimate_1rm_from_5rm(lifts.overhead_press_5rm)
 
     push_pull_ratio = bench_1rm / max(row_1rm, 1)
-    squat_hinge_ratio = squat_1rm / max(deadlift_1rm, 1)
-    upper_balance_ratio = ohp_1rm / max(bench_1rm, 1)
+    push_balance_ratio = lifts.strict_pushups_reps / max(lifts.pullups_reps, 1)
 
     push_pull_score = 100 - abs(push_pull_ratio - 1.0) * 55
-    squat_hinge_score = 100 - abs(squat_hinge_ratio - 0.85) * 70
-    upper_balance_score = 100 - abs(upper_balance_ratio - 0.65) * 100
+    push_balance_score = 100 - abs(push_balance_ratio - 1.0) * 50
 
     days_score = normalize_ratio_score(profile.days_per_week, 2, 6)
 
     score = statistics.mean([
         clamp(push_pull_score, 0, 100),
-        clamp(squat_hinge_score, 0, 100),
-        clamp(upper_balance_score, 0, 100),
+        clamp(push_balance_score, 0, 100),
         clamp(days_score, 0, 100)
     ])
     return clamp(score, 0, 100)
@@ -334,26 +319,23 @@ def build_exercise_library() -> Dict[str, List[Dict]]:
     return {
         "Full Body x3": [
             {"day": "Day 1", "focus": "Strength + Upper Emphasis", "exercises": [
-                ("Back Squat", "3-4", "5-6", "squat"),
                 ("Bench Press", "3-4", "5-6", "bench"),
                 ("Barbell Row", "3-4", "6-8", "row"),
-                ("Romanian Deadlift", "3", "8-10", "deadlift"),
+                ("Strict Push-Up", "3", "8-12", "pushup"),
                 ("Lateral Raise", "3", "12-15", "none"),
                 ("Cable Crunch", "3", "12-15", "none"),
             ]},
             {"day": "Day 2", "focus": "Hypertrophy + Pull Emphasis", "exercises": [
-                ("Deadlift", "3", "4-5", "deadlift"),
-                ("Overhead Press", "3-4", "5-8", "ohp"),
-                ("Lat Pulldown / Pull-Up", "3-4", "6-10", "pullup"),
-                ("Bulgarian Split Squat", "3", "8-10", "none"),
                 ("Incline Dumbbell Press", "3", "8-12", "bench"),
+                ("Lat Pulldown / Pull-Up", "3-4", "6-10", "pullup"),
+                ("Chest-Supported Row", "3", "8-10", "row"),
+                ("Strict Push-Up", "3", "10-15", "pushup"),
                 ("Hammer Curl", "3", "10-12", "none"),
             ]},
             {"day": "Day 3", "focus": "Balanced Volume", "exercises": [
-                ("Front Squat or Leg Press", "3", "6-10", "squat"),
                 ("Incline Bench Press", "3-4", "6-8", "bench"),
                 ("Chest-Supported Row", "3-4", "8-10", "row"),
-                ("Hip Hinge Machine / RDL", "3", "8-10", "deadlift"),
+                ("Strict Push-Up", "3", "12-20", "pushup"),
                 ("Cable Lateral Raise", "3", "12-15", "none"),
                 ("Triceps Pushdown", "3", "10-12", "none"),
             ]},
@@ -362,37 +344,33 @@ def build_exercise_library() -> Dict[str, List[Dict]]:
             {"day": "Day 1", "focus": "Upper Strength", "exercises": [
                 ("Bench Press", "4", "5-6", "bench"),
                 ("Barbell Row", "4", "6-8", "row"),
-                ("Overhead Press", "3", "5-6", "ohp"),
                 ("Pull-Up / Lat Pulldown", "3", "6-10", "pullup"),
                 ("Incline Dumbbell Press", "3", "8-10", "bench"),
                 ("Lateral Raise", "3", "12-15", "none"),
                 ("EZ-Bar Curl", "3", "10-12", "none"),
             ]},
-            {"day": "Day 2", "focus": "Lower Strength", "exercises": [
-                ("Back Squat", "4", "5-6", "squat"),
-                ("Romanian Deadlift", "3", "6-8", "deadlift"),
-                ("Walking Lunge", "3", "8-10/leg", "none"),
-                ("Leg Curl", "3", "10-12", "none"),
-                ("Calf Raise", "4", "10-15", "none"),
+            {"day": "Day 2", "focus": "Push + Core", "exercises": [
+                ("Strict Push-Up", "4", "8-12", "pushup"),
+                ("Incline Dumbbell Press", "3", "8-10", "bench"),
+                ("Cable Fly", "3", "12-15", "none"),
+                ("Triceps Pushdown", "3", "10-12", "none"),
                 ("Hanging Leg Raise", "3", "10-15", "none"),
             ]},
             {"day": "Day 3", "focus": "Upper Hypertrophy", "exercises": [
                 ("Incline Bench Press", "4", "6-8", "bench"),
                 ("Chest-Supported Row", "4", "8-10", "row"),
-                ("Seated Dumbbell Shoulder Press", "3", "8-10", "ohp"),
                 ("Lat Pulldown", "3", "8-12", "pullup"),
+                ("Strict Push-Up", "3", "10-15", "pushup"),
                 ("Cable Fly", "3", "12-15", "none"),
                 ("Cable Lateral Raise", "4", "12-20", "none"),
                 ("Skull Crusher", "3", "10-12", "none"),
                 ("Incline Curl", "3", "10-12", "none"),
             ]},
-            {"day": "Day 4", "focus": "Lower Hypertrophy + Conditioning", "exercises": [
-                ("Front Squat / Hack Squat", "3-4", "6-10", "squat"),
-                ("RDL or Hip Thrust", "3", "8-10", "deadlift"),
-                ("Bulgarian Split Squat", "3", "8-10/leg", "none"),
-                ("Leg Extension", "3", "12-15", "none"),
-                ("Seated Leg Curl", "3", "12-15", "none"),
-                ("Standing Calf Raise", "4", "12-15", "none"),
+            {"day": "Day 4", "focus": "Pull + Conditioning", "exercises": [
+                ("Barbell Row", "3-4", "8-10", "row"),
+                ("Pull-Up / Lat Pulldown", "3", "8-12", "pullup"),
+                ("Rear Delt Fly", "3", "12-15", "none"),
+                ("EZ-Bar Curl", "3", "10-12", "none"),
                 ("Bike / Incline Walk", "1", "12-20 min", "none"),
             ]},
         ],
@@ -400,7 +378,7 @@ def build_exercise_library() -> Dict[str, List[Dict]]:
             {"day": "Day 1", "focus": "Push", "exercises": [
                 ("Bench Press", "4", "5-6", "bench"),
                 ("Incline Dumbbell Press", "3", "8-10", "bench"),
-                ("Seated Dumbbell Press", "3", "8-10", "ohp"),
+                ("Strict Push-Up", "3", "10-15", "pushup"),
                 ("Cable Fly", "3", "12-15", "none"),
                 ("Lateral Raise", "4", "12-20", "none"),
                 ("Triceps Pushdown", "3", "10-12", "none"),
@@ -413,29 +391,27 @@ def build_exercise_library() -> Dict[str, List[Dict]]:
                 ("EZ-Bar Curl", "3", "10-12", "none"),
                 ("Hammer Curl", "3", "10-12", "none"),
             ]},
-            {"day": "Day 3", "focus": "Legs", "exercises": [
-                ("Back Squat", "4", "5-6", "squat"),
-                ("Romanian Deadlift", "3", "6-8", "deadlift"),
-                ("Leg Press", "3", "10-12", "none"),
-                ("Leg Curl", "3", "10-12", "none"),
-                ("Calf Raise", "4", "12-15", "none"),
+            {"day": "Day 3", "focus": "Push + Core", "exercises": [
+                ("Incline Bench Press", "4", "6-8", "bench"),
+                ("Strict Push-Up", "3", "12-20", "pushup"),
+                ("Cable Fly", "3", "12-15", "none"),
+                ("Triceps Pushdown", "3", "10-12", "none"),
                 ("Cable Crunch", "3", "12-15", "none"),
             ]},
             {"day": "Day 4", "focus": "Upper Aesthetic", "exercises": [
                 ("Incline Bench Press", "4", "6-8", "bench"),
                 ("Chest-Supported Row", "4", "8-10", "row"),
-                ("Overhead Press", "3", "5-8", "ohp"),
                 ("Lat Pulldown", "3", "8-12", "pullup"),
+                ("Strict Push-Up", "3", "10-15", "pushup"),
                 ("Cable Lateral Raise", "4", "12-20", "none"),
                 ("Cable Curl", "3", "10-12", "none"),
                 ("Overhead Rope Extension", "3", "10-12", "none"),
             ]},
-            {"day": "Day 5", "focus": "Lower + Conditioning", "exercises": [
-                ("Front Squat / Hack Squat", "3-4", "6-10", "squat"),
-                ("Hip Thrust / RDL", "3", "8-10", "deadlift"),
-                ("Walking Lunge", "3", "8-10/leg", "none"),
-                ("Leg Extension", "3", "12-15", "none"),
-                ("Seated Leg Curl", "3", "12-15", "none"),
+            {"day": "Day 5", "focus": "Pull + Conditioning", "exercises": [
+                ("Barbell Row", "3-4", "8-10", "row"),
+                ("Pull-Up / Lat Pulldown", "3", "8-12", "pullup"),
+                ("Rear Delt Fly", "3", "12-15", "none"),
+                ("EZ-Bar Curl", "3", "10-12", "none"),
                 ("Incline Walk / Bike", "1", "15-20 min", "none"),
             ]},
         ],
@@ -443,7 +419,7 @@ def build_exercise_library() -> Dict[str, List[Dict]]:
             {"day": "Day 1", "focus": "Push Strength", "exercises": [
                 ("Bench Press", "4", "4-6", "bench"),
                 ("Incline Dumbbell Press", "3", "8-10", "bench"),
-                ("Overhead Press", "3", "5-6", "ohp"),
+                ("Strict Push-Up", "3", "8-12", "pushup"),
                 ("Cable Fly", "3", "12-15", "none"),
                 ("Lateral Raise", "4", "12-20", "none"),
                 ("Triceps Pushdown", "3", "10-12", "none"),
@@ -455,28 +431,27 @@ def build_exercise_library() -> Dict[str, List[Dict]]:
                 ("Rear Delt Fly", "3", "12-15", "none"),
                 ("EZ-Bar Curl", "3", "10-12", "none"),
             ]},
-            {"day": "Day 3", "focus": "Legs Strength", "exercises": [
-                ("Back Squat", "4", "4-6", "squat"),
-                ("Romanian Deadlift", "3", "6-8", "deadlift"),
-                ("Leg Press", "3", "10-12", "none"),
-                ("Leg Curl", "3", "10-12", "none"),
+            {"day": "Day 3", "focus": "Push Hypertrophy", "exercises": [
+                ("Incline Bench Press", "4", "6-8", "bench"),
+                ("Strict Push-Up", "3", "12-20", "pushup"),
+                ("Cable Fly", "3", "12-15", "none"),
+                ("Triceps Pushdown", "3", "10-12", "none"),
                 ("Standing Calf Raise", "4", "12-15", "none"),
             ]},
             {"day": "Day 4", "focus": "Upper Aesthetic", "exercises": [
                 ("Incline Bench Press", "4", "6-8", "bench"),
                 ("Lat Pulldown", "4", "8-12", "pullup"),
-                ("Seated Dumbbell Shoulder Press", "3", "8-10", "ohp"),
+                ("Strict Push-Up", "3", "10-15", "pushup"),
                 ("Cable Lateral Raise", "4", "12-20", "none"),
                 ("Cable Fly", "3", "12-15", "none"),
                 ("Cable Curl", "3", "10-12", "none"),
                 ("Overhead Rope Extension", "3", "10-12", "none"),
             ]},
-            {"day": "Day 5", "focus": "Lower Volume + Core", "exercises": [
-                ("Front Squat / Hack Squat", "3-4", "6-10", "squat"),
-                ("Hip Thrust / RDL", "3", "8-10", "deadlift"),
-                ("Bulgarian Split Squat", "3", "8-10/leg", "none"),
-                ("Leg Extension", "3", "12-15", "none"),
-                ("Seated Leg Curl", "3", "12-15", "none"),
+            {"day": "Day 5", "focus": "Pull Volume + Core", "exercises": [
+                ("Barbell Row", "3-4", "8-10", "row"),
+                ("Pull-Up / Lat Pulldown", "3", "8-12", "pullup"),
+                ("Rear Delt Fly", "3", "12-15", "none"),
+                ("EZ-Bar Curl", "3", "10-12", "none"),
                 ("Cable Crunch", "3", "12-15", "none"),
             ]},
             {"day": "Day 6", "focus": "Arms + Conditioning", "exercises": [
@@ -521,14 +496,13 @@ def get_intensity_percentage(goal: str, rep_range: str) -> float:
 def estimate_working_weight(exercise_key: str, lifts: LiftInputs, goal: str) -> str:
     one_rms = {
         "bench": estimate_1rm_from_5rm(lifts.bench_5rm),
-        "squat": estimate_1rm_from_5rm(lifts.squat_5rm),
-        "deadlift": estimate_1rm_from_5rm(lifts.deadlift_5rm),
-        "ohp": estimate_1rm_from_5rm(lifts.overhead_press_5rm),
         "row": estimate_1rm_from_5rm(lifts.barbell_row_5rm),
     }
 
     if exercise_key == "pullup":
         return "Bodyweight or weighted as able"
+    if exercise_key == "pushup":
+        return "Bodyweight"
     if exercise_key == "none":
         return "Choose a weight that leaves 1-2 reps in reserve"
 
@@ -543,15 +517,16 @@ def estimate_working_weight(exercise_key: str, lifts: LiftInputs, goal: str) -> 
 def estimate_working_weight_with_reps(exercise_key: str, rep_range: str, lifts: LiftInputs, goal: str) -> str:
     one_rms = {
         "bench": estimate_1rm_from_5rm(lifts.bench_5rm),
-        "squat": estimate_1rm_from_5rm(lifts.squat_5rm),
-        "deadlift": estimate_1rm_from_5rm(lifts.deadlift_5rm),
-        "ohp": estimate_1rm_from_5rm(lifts.overhead_press_5rm),
         "row": estimate_1rm_from_5rm(lifts.barbell_row_5rm),
     }
 
     if exercise_key == "pullup":
         if lifts.pullups_reps >= 10:
             return "Bodyweight; add 5-25 lb if reps exceed target"
+        return "Bodyweight; build reps until top of range"
+    if exercise_key == "pushup":
+        if lifts.strict_pushups_reps >= 30:
+            return "Bodyweight; add weight or elevate feet if reps exceed target"
         return "Bodyweight; build reps until top of range"
 
     if exercise_key == "none":
@@ -697,6 +672,10 @@ sex = st.sidebar.selectbox("Sex", ["Male", "Female"])
 height_in = st.sidebar.number_input("Height (inches)", min_value=55.0, max_value=84.0, value=70.0, step=0.5)
 weight_lb = st.sidebar.number_input("Weight (lb)", min_value=90.0, max_value=400.0, value=170.0, step=1.0)
 body_fat = st.sidebar.number_input("Estimated Body Fat %", min_value=5.0, max_value=45.0, value=16.0, step=0.5)
+bodyfat_range = st.sidebar.selectbox(
+"Estimated Body Fat",
+["8-10%", "10-14%", "15-18%", "18-22%", "22-25%", "25%+"]
+)
 
 training_age = st.sidebar.selectbox("Training Age", ["Beginner", "Novice", "Intermediate", "Advanced"])
 goal = st.sidebar.selectbox("Goal", ["Lean Bulk", "Fat Loss", "Recomp", "Strength"])
@@ -717,11 +696,9 @@ equipment = st.sidebar.selectbox("Equipment", ["Full Gym", "Dumbbells + Bench", 
 
 st.sidebar.header("Current Lift Inputs")
 bench_5rm = st.sidebar.number_input("Bench Press 5RM (lb)", min_value=0.0, max_value=700.0, value=165.0, step=5.0)
-squat_5rm = st.sidebar.number_input("Back Squat 5RM (lb)", min_value=0.0, max_value=900.0, value=225.0, step=5.0)
-deadlift_5rm = st.sidebar.number_input("Deadlift 5RM (lb)", min_value=0.0, max_value=1000.0, value=275.0, step=5.0)
-overhead_press_5rm = st.sidebar.number_input("Overhead Press 5RM (lb)", min_value=0.0, max_value=400.0, value=95.0, step=5.0)
 barbell_row_5rm = st.sidebar.number_input("Barbell Row 5RM (lb)", min_value=0.0, max_value=500.0, value=135.0, step=5.0)
 pullups_reps = st.sidebar.number_input("Strict Pull-Up Reps", min_value=0, max_value=40, value=6, step=1)
+strict_pushups_reps = st.sidebar.number_input("Strict Push-Up Reps", min_value=0, max_value=100, value=20, step=1)
 
 run_engine = st.sidebar.button("Generate Build Plan")
 
@@ -752,11 +729,9 @@ if run_engine:
 
     lifts = LiftInputs(
         bench_5rm=bench_5rm,
-        squat_5rm=squat_5rm,
-        deadlift_5rm=deadlift_5rm,
-        overhead_press_5rm=overhead_press_5rm,
         barbell_row_5rm=barbell_row_5rm,
-        pullups_reps=pullups_reps
+        pullups_reps=pullups_reps,
+        strict_pushups_reps=strict_pushups_reps
     )
 
     strength_score, ratios = compute_strength_score(profile, lifts)
