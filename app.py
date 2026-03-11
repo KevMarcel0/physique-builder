@@ -2,18 +2,95 @@ import math
 import statistics
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
-
 import streamlit as st
-
+import random
+import time
 
 # =========================
-# PAGE CONFIG
+# ENHANCED GAMIFIED PHYSIQUE BUILDER WITH ACCOUNTS & AVATARS
 # =========================
 st.set_page_config(
-    page_title="Physique Builder Engine",
+    page_title="Level Up Fitness",
     page_icon="🎮",
     layout="wide"
 )
+
+# Avatar system - Pixelated retro gaming characters
+AVATARS = {
+    "hero": {
+        "name": "Retro Jumper",
+        "description": "Classic jumping pixel character",
+        "base_gif": "🦸‍♂️",
+        "level_gifs": {
+            1: "🧍‍♂️",  # Level 1-5: Standing
+            6: "🏃‍♂️",  # Level 6-10: Running
+            11: "🤸‍♂️", # Level 11-15: Jumping
+            16: "⚔️",   # Level 16-20: Fighting
+            21: "👑"    # Level 21+: Champion
+        }
+    },
+    "princess": {
+        "name": "Royal Pixel",
+        "description": "Elegant pixelated royalty",
+        "base_gif": "👸",
+        "level_gifs": {
+            1: "🧍‍♀️",
+            6: "🏃‍♀️",
+            11: "💃",
+            16: "🛡️",
+            21: "👸"
+        }
+    },
+    "beast": {
+        "name": "Fierce Pixel",
+        "description": "Powerful pixelated monster",
+        "base_gif": "🐉",
+        "level_gifs": {
+            1: "🐲",
+            6: "🦖",
+            11: "🔥",
+            16: "👹",
+            21: "🐉"
+        }
+    },
+    "mystic": {
+        "name": "Magical Pixel",
+        "description": "Enchanted pixelated sorcerer",
+        "base_gif": "🧙‍♂️",
+        "level_gifs": {
+            1: "🧙‍♂️",
+            6: "🔮",
+            11: "✨",
+            16: "🌟",
+            21: "🪄"
+        }
+    },
+    "guardian": {
+        "name": "Armored Pixel",
+        "description": "Protective pixelated knight",
+        "base_gif": "⚔️",
+        "level_gifs": {
+            1: "🛡️",
+            6: "⚔️",
+            11: "🏰",
+            16: "👑",
+            21: "⚔️"
+        }
+    }
+}
+
+# Initialize session state
+if 'user_account' not in st.session_state:
+    st.session_state.user_account = None
+if 'all_users' not in st.session_state:
+    # Mock user database
+    st.session_state.all_users = [
+        {"username": "ProLifter", "avatar": "hero", "level": 12, "xp": 3200, "xp_to_next": 3600},
+        {"username": "FitWarrior", "avatar": "princess", "level": 8, "xp": 1950, "xp_to_next": 2200},
+        {"username": "GainsMaster", "avatar": "guardian", "level": 15, "xp": 4800, "xp_to_next": 5200},
+        {"username": "BeastMode", "avatar": "beast", "level": 6, "xp": 1450, "xp_to_next": 1700},
+        {"username": "MysticGains", "avatar": "mystic", "level": 10, "xp": 2650, "xp_to_next": 2900},
+    ]
 
 
 # =========================
@@ -34,10 +111,10 @@ class UserProfile:
     stress_level: int
     steps_per_day: int
     hydration_liters: float
-    protein_g: float
+    protein_g: int
     calories: int
-    injuries: str
-    equipment: str
+    injuries: str = ""
+    equipment: str = "Full Gym"
 
 
 @dataclass
@@ -617,312 +694,617 @@ def generate_supplement_recommendations(profile: UserProfile) -> List[str]:
 
 
 # =========================
-# UI STYLING
-# =========================
+# Custom CSS for game-like UI
 st.markdown("""
 <style>
-.main-title {
-    font-size: 2.2rem;
-    font-weight: 800;
-    margin-bottom: 0.2rem;
+/* Mobile responsive design */
+@media (max-width: 768px) {
+    .main .block-container {
+        padding: 1rem;
+    }
 }
-.sub-title {
-    font-size: 1.0rem;
-    color: #9aa0a6;
-    margin-bottom: 1.2rem;
+
+.game-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 15px;
+    text-align: center;
+    margin-bottom: 20px;
 }
-.stat-box {
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 16px;
-    padding: 18px;
-    background: rgba(255,255,255,0.03);
+
+.level-badge {
+    background: linear-gradient(45deg, #ffd700, #ffed4e);
+    color: #333;
+    padding: 10px 20px;
+    border-radius: 25px;
+    font-weight: bold;
+    font-size: 1.2rem;
+    display: inline-block;
+    margin: 10px;
 }
-.section-card {
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 16px;
-    padding: 18px;
-    margin-bottom: 16px;
-    background: rgba(255,255,255,0.03);
+
+.xp-bar {
+    width: 100%;
+    height: 20px;
+    background: #e9ecef;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 10px 0;
 }
-.small-muted {
-    color: #9aa0a6;
+
+.xp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #20c997);
+    transition: width 0.3s ease;
+}
+
+.quest-card {
+    background: white;
+    border: 2px solid #dee2e6;
+    border-radius: 15px;
+    padding: 20px;
+    margin: 10px 0;
+    transition: all 0.3s;
+}
+
+.quest-card:hover {
+    border-color: #007bff;
+    box-shadow: 0 4px 8px rgba(0,123,255,0.2);
+}
+
+.quest-active {
+    border-color: #28a745;
+    background: rgba(40, 167, 69, 0.05);
+}
+
+.reward-badge {
+    background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.achievement-card {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    padding: 15px;
+    border-radius: 10px;
+    margin: 5px;
+    text-align: center;
+}
+
+.stat-card {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+    margin: 5px;
+}
+
+.leaderboard-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background: white;
+    border-radius: 8px;
+    margin: 5px 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    margin: 10px 0;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    border: 1px solid #e0e0e0;
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+.primary-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.success-card {
+    border-left: 4px solid #28a745;
+}
+
+.warning-card {
+    border-left: 4px solid #ffc107;
+}
+
+.danger-card {
+    border-left: 4px solid #dc3545;
+}
+
+.metric-large {
+    font-size: 2.5rem;
+    font-weight: bold;
+    text-align: center;
+}
+
+.metric-label {
     font-size: 0.9rem;
+    opacity: 0.8;
+    text-align: center;
+}
+
+.button-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.action-button {
+    background: #f8f9fa;
+    border: 2px solid #dee2e6;
+    border-radius: 10px;
+    padding: 15px;
+    text-align: center;
+    text-decoration: none;
+    transition: all 0.2s;
+    display: block;
+}
+
+.action-button:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+    text-decoration: none;
+}
+
+.progress-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.2rem;
+    margin: 0 auto;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================
-# HEADER
-# =========================
-st.markdown('<div class="main-title">🎮 Physique Builder Engine</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="sub-title">Build a balanced workout plan, recovery score, and target-physique roadmap.</div>',
-    unsafe_allow_html=True
-)
+# Check if user has account
+if st.session_state.user_account is None:
+    # Account Creation Screen
+    st.markdown("""
+    <div style="text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px; margin-bottom: 30px;">
+        <h1>🎮 Create Your Fitness Character</h1>
+        <p>Choose your avatar and start your fitness journey!</p>
+    </div>
+    """, unsafe_allow_html=True)
 
+    col1, col2 = st.columns([1, 2])
 
-# =========================
-# SIDEBAR INPUTS
-# =========================
-st.sidebar.header("Profile")
+    with col1:
+        st.subheader("📝 Account Details")
+        username = st.text_input("Choose Username", max_chars=20)
+        if st.button("Generate Random Name"):
+            random_names = ["FitHero", "GainzMaster", "LiftLegend", "MuscleMage", "PowerPaladin", "EnduranceElf"]
+            username = random.choice(random_names)
+            st.rerun()
 
-age = st.sidebar.number_input("Age", min_value=16, max_value=70, value=24)
-sex = st.sidebar.selectbox("Sex", ["Male", "Female"])
-height_in = st.sidebar.number_input("Height (inches)", min_value=55.0, max_value=84.0, value=70.0, step=0.5)
-weight_lb = st.sidebar.number_input("Weight (lb)", min_value=90.0, max_value=400.0, value=170.0, step=1.0)
-body_fat = st.sidebar.number_input("Estimated Body Fat %", min_value=5.0, max_value=45.0, value=16.0, step=0.5)
-bodyfat_range = st.sidebar.selectbox(
-"Estimated Body Fat",
-["8-10%", "10-14%", "15-18%", "18-22%", "22-25%", "25%+"]
-)
+    with col2:
+        st.subheader("🎭 Choose Your Avatar")
 
-training_age = st.sidebar.selectbox("Training Age", ["Beginner", "Novice", "Intermediate", "Advanced"])
-goal = st.sidebar.selectbox("Goal", ["Lean Bulk", "Fat Loss", "Recomp", "Strength"])
-target_build = st.sidebar.selectbox(
-    "Target Build Style",
-    ["Lean Actor Build", "Athletic Superhero Build", "Balanced Aesthetic Build", "Powerlifter Build"]
-)
+        # Avatar selection
+        avatar_cols = st.columns(3)
+        selected_avatar = None
 
-days_per_week = st.sidebar.slider("Training Days Per Week", 2, 6, 4)
-sleep_hours = st.sidebar.slider("Sleep Hours", 4.0, 10.0, 7.0, 0.5)
-stress_level = st.sidebar.slider("Stress Level (1 low - 10 high)", 1, 10, 5)
-steps_per_day = st.sidebar.slider("Average Steps Per Day", 1000, 20000, 6500, 500)
-hydration_liters = st.sidebar.slider("Water Intake (liters/day)", 0.5, 6.0, 2.5, 0.1)
-protein_g = st.sidebar.number_input("Daily Protein (g)", min_value=40.0, max_value=350.0, value=140.0, step=5.0)
-calories = st.sidebar.number_input("Daily Calories", min_value=1000, max_value=6000, value=2400, step=50)
-injuries = st.sidebar.text_area("Injuries / Limitations", "")
-equipment = st.sidebar.selectbox("Equipment", ["Full Gym", "Dumbbells + Bench", "Home Gym", "Machines Mostly"])
+        for i, (avatar_key, avatar_data) in enumerate(AVATARS.items()):
+            with avatar_cols[i % 3]:
+                # Get current level gif (default to level 1)
+                current_gif = avatar_data["level_gifs"][1]
 
-st.sidebar.header("Current Lift Inputs")
-bench_5rm = st.sidebar.number_input("Bench Press 5RM (lb)", min_value=0.0, max_value=700.0, value=165.0, step=5.0)
-barbell_row_5rm = st.sidebar.number_input("Barbell Row 5RM (lb)", min_value=0.0, max_value=500.0, value=135.0, step=5.0)
-pullups_reps = st.sidebar.number_input("Strict Pull-Up Reps", min_value=0, max_value=40, value=6, step=1)
-strict_pushups_reps = st.sidebar.number_input("Strict Push-Up Reps", min_value=0, max_value=100, value=20, step=1)
+                if st.button(f"{current_gif}\n{avatar_data['name']}", key=f"avatar_{avatar_key}"):
+                    selected_avatar = avatar_key
 
-run_engine = st.sidebar.button("Generate Build Plan")
+                st.caption(avatar_data["description"])
+                st.markdown("---")
 
+        if selected_avatar:
+            st.session_state.selected_avatar = selected_avatar
+            st.success(f"Selected: {AVATARS[selected_avatar]['name']}")
 
-# =========================
-# MAIN ENGINE
-# =========================
-if run_engine:
-    profile = UserProfile(
-        age=age,
-        sex=sex,
-        height_in=height_in,
-        weight_lb=weight_lb,
-        body_fat=body_fat,
-        training_age=training_age,
-        goal=goal,
-        target_build=target_build,
-        days_per_week=days_per_week,
-        sleep_hours=sleep_hours,
-        stress_level=stress_level,
-        steps_per_day=steps_per_day,
-        hydration_liters=hydration_liters,
-        protein_g=protein_g,
-        calories=calories,
-        injuries=injuries,
-        equipment=equipment
-    )
+    # Create account button
+    if username and hasattr(st.session_state, 'selected_avatar'):
+        if st.button("🚀 Create Character & Start Journey!", type="primary", use_container_width=True):
+            # Create new user account
+            new_user = {
+                "username": username,
+                "avatar": st.session_state.selected_avatar,
+                "level": 1,
+                "xp": 0,
+                "xp_to_next": 200,
+                "achievements": ["Welcome Warrior"],
+                "join_date": time.time()
+            }
 
-    lifts = LiftInputs(
-        bench_5rm=bench_5rm,
-        barbell_row_5rm=barbell_row_5rm,
-        pullups_reps=pullups_reps,
-        strict_pushups_reps=strict_pushups_reps
-    )
+            st.session_state.user_account = new_user
+            st.session_state.all_users.append(new_user)
+            st.balloons()
+            st.success(f"Welcome, {username}! Your fitness adventure begins now!")
+            time.sleep(2)
+            st.rerun()
 
-    strength_score, ratios = compute_strength_score(profile, lifts)
-    recovery_score = compute_recovery_score(profile)
-    balance_score = compute_balance_score(profile, lifts)
-    physique_match_score = compute_physique_match_score(profile)
-    hypertrophy_score = compute_hypertrophy_score(profile, lifts)
-    overall_score = compute_overall_rating(
-        strength_score, recovery_score, balance_score, physique_match_score, hypertrophy_score
-    )
-
-    split, program = generate_program(profile, lifts)
-    recovery_recs = generate_recovery_recommendations(profile, recovery_score)
-    supplement_recs = generate_supplement_recommendations(profile)
-
-    ffmi = compute_ffmi(profile.height_in, profile.weight_lb, profile.body_fat)
-    bmi = compute_bmi(profile.height_in, profile.weight_lb)
-
-    # =========================
-    # TOP STATS
-    # =========================
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-
-    stats = [
-        ("Overall", overall_score),
-        ("Strength", strength_score),
-        ("Recovery", recovery_score),
-        ("Balance", balance_score),
-        ("Hypertrophy", hypertrophy_score),
-        ("Physique Match", physique_match_score),
-    ]
-
-    for col, (label, score) in zip([c1, c2, c3, c4, c5, c6], stats):
-        with col:
-            st.markdown('<div class="stat-box">', unsafe_allow_html=True)
-            st.metric(label=label, value=f"{score:.0f}/100", delta=f"Tier {score_to_grade(score)}")
-            st.progress(int(score))
-            st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("")
-
-    # =========================
-    # BODY METRICS
-    # =========================
-    left, right = st.columns([1, 1])
-
-    with left:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        st.subheader("📊 Body Metrics")
-        st.write(f"**BMI:** {bmi:.1f}")
-        st.write(f"**FFMI:** {ffmi:.1f}")
-        st.write(f"**Protein per kg:** {profile.protein_g / max(1.0, pounds_to_kg(profile.weight_lb)):.2f} g/kg")
-        st.write(f"**Recommended Split:** {split}")
-        st.write(f"**Goal:** {profile.goal}")
-        st.write(f"**Target Style:** {profile.target_build}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with right:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        st.subheader("🏋️ Strength Ratios")
-        for k, v in ratios.items():
-            if k == "Pull-Ups":
-                st.write(f"**{k}:** {v}")
-            else:
-                st.write(f"**{k}:** {v:.2f}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # =========================
-    # PROGRAM
-    # =========================
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.subheader("🧩 Custom Training Program")
-
-    for day in program:
-        with st.expander(f"{day['day']} — {day['focus']}", expanded=False):
-            st.write("**Workout Table**")
-            table_rows = []
-            for ex_name, sets, reps, key in day["exercises"]:
-                weight_hint = estimate_working_weight_with_reps(key, reps, lifts, profile.goal)
-                table_rows.append({
-                    "Exercise": ex_name,
-                    "Sets": sets,
-                    "Reps": reps,
-                    "Suggested Working Weight": weight_hint
-                })
-            st.table(table_rows)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # =========================
-    # GAME-LIKE BUILD REPORT
-    # =========================
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.subheader("🎯 Build Report")
-
-    weaknesses = []
-    if recovery_score < 70:
-        weaknesses.append("Recovery")
-    if balance_score < 70:
-        weaknesses.append("Structural balance")
-    if strength_score < 70:
-        weaknesses.append("Base strength")
-    if hypertrophy_score < 70:
-        weaknesses.append("Muscle-building support")
-    if physique_match_score < 70:
-        weaknesses.append("Current body composition vs target look")
-
-    strengths = []
-    if recovery_score >= 75:
-        strengths.append("Recovery habits")
-    if balance_score >= 75:
-        strengths.append("Movement balance")
-    if strength_score >= 75:
-        strengths.append("Base strength")
-    if hypertrophy_score >= 75:
-        strengths.append("Growth potential")
-    if physique_match_score >= 75:
-        strengths.append("Good match to target style")
-
-    if not weaknesses:
-        weaknesses.append("No major red flags detected")
-    if not strengths:
-        strengths.append("You have room to build across all categories")
-
-    st.write(f"**Player Rank:** {score_to_grade(overall_score)}")
-    st.write(f"**Primary Strengths:** {', '.join(strengths)}")
-    st.write(f"**Main Bottlenecks:** {', '.join(weaknesses)}")
-
-    if profile.target_build == "Lean Actor Build":
-        st.write("**Target Look Focus:** Keep waist tight, build upper chest, lats, delts, and visible arm definition without oversized bulk.")
-    elif profile.target_build == "Athletic Superhero Build":
-        st.write("**Target Look Focus:** Emphasize shoulders, chest, upper back, athletic legs, and strong conditioning.")
-    elif profile.target_build == "Powerlifter Build":
-        st.write("**Target Look Focus:** Maximize squat, bench, and deadlift performance with enough accessory volume to stay healthy.")
-    else:
-        st.write("**Target Look Focus:** Balanced size, good proportions, and strong all-around training.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # =========================
-    # RECOVERY / SUPPLEMENTS
-    # =========================
-    col_a, col_b = st.columns(2)
-
-    with col_a:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        st.subheader("🛌 Recovery Recommendations")
-        for item in recovery_recs:
-            st.write(f"- {item}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with col_b:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        st.subheader("🧪 Supplement Suggestions")
-        for item in supplement_recs:
-            st.write(f"- {item}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # =========================
-    # PROGRESSION RULES
-    # =========================
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.subheader("📈 Progression Algorithm")
-    st.code(
-        """For each exercise:
-1. Start with the suggested working weight.
-2. Stay 1-2 reps away from failure on most sets.
-3. When you hit the TOP of the rep range for all work sets:
-      increase upper-body lifts by 5 lb
-      increase lower-body lifts by 5-10 lb
-4. If performance drops for 2 weeks:
-      reduce volume by 25-35% for 1 week
-5. If sleep/stress is poor:
-      keep the weight but perform 1 less set
-6. Re-test estimated 5RM every 6-8 weeks
-        """,
-        language="text"
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("---")
+    st.subheader("👥 Existing Players")
+    for user in random.sample(st.session_state.all_users, min(3, len(st.session_state.all_users))):
+        avatar_emoji = AVATARS[user["avatar"]]["level_gifs"].get(user["level"], AVATARS[user["avatar"]]["level_gifs"][1])
+        st.write(f"{avatar_emoji} **{user['username']}** - Level {user['level']}")
 
 else:
-    st.info("Enter your profile in the sidebar and click **Generate Build Plan**.")
-    st.markdown("""
-### What this app does
-- Scores your current training status like a game character build
-- Recommends a split based on your schedule
-- Gives sets, reps, and estimated working weights
-- Suggests recovery and supplement basics
-- Tries to align your training style with your target physique
+    # Main Game Interface
+    user = st.session_state.user_account
 
-### Important note
-This estimates a **physique style**, not an exact celebrity body. Bone structure, height, proportions, and genetics matter too.
-""")
+    # Get current avatar based on level
+    current_level = user["level"]
+    avatar_data = AVATARS[user["avatar"]]
+
+    # Find appropriate avatar gif based on level
+    avatar_gif = avatar_data["level_gifs"][1]  # default
+    for level_threshold in sorted(avatar_data["level_gifs"].keys(), reverse=True):
+        if current_level >= level_threshold:
+            avatar_gif = avatar_data["level_gifs"][level_threshold]
+            break
+
+    # Game header with avatar
+    st.markdown(f"""
+    <div class="game-header">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 20px;">
+            <div style="font-size: 4rem;">{avatar_gif}</div>
+            <div>
+                <h1>🎮 {user["username"]}'s Fitness Quest</h1>
+                <div class="level-badge">Level {user["level"]}</div>
+            </div>
+        </div>
+        <p>XP: {user["xp"]} / {user["xp_to_next"]}</p>
+        <div class="xp-bar">
+            <div class="xp-fill" style="width: {user["xp"] / user["xp_to_next"] * 100}%"></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+    # Main game tabs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["⚔️ Quests", "🏋️ Physique Builder", "🏆 Achievements", "📊 Stats", "👥 Leaderboard"])
+
+    with tab1:
+        st.header("⚔️ Daily Quests")
+
+        quests = [
+            {
+                "title": "Complete Upper Body Workout",
+                "description": "Finish all exercises in today's upper body session",
+                "reward": "150 XP",
+                "progress": 3,
+                "total": 4,
+                "active": True
+            },
+            {
+                "title": "Hit Protein Goal",
+                "description": "Consume 200g of protein today",
+                "reward": "100 XP",
+                "progress": 180,
+                "total": 200,
+                "active": True
+            },
+            {
+                "title": "7-Day Streak",
+                "description": "Work out for 7 consecutive days",
+                "reward": "500 XP + Badge",
+                "progress": 5,
+                "total": 7,
+                "active": True
+            },
+            {
+                "title": "Bench Press PR",
+                "description": "Set a new personal record",
+                "reward": "200 XP",
+                "progress": 0,
+                "total": 1,
+                "active": False
+            }
+        ]
+
+        for quest in quests:
+            card_class = "quest-card quest-active" if quest["active"] else "quest-card"
+            progress_pct = quest["progress"] / quest["total"] * 100
+
+            st.markdown(f"""
+            <div class="{card_class}">
+                <h4>{quest['title']} <span class="reward-badge">{quest['reward']}</span></h4>
+                <p>{quest['description']}</p>
+                <div style="margin: 10px 0;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <small>Progress</small>
+                        <small>{quest['progress']}/{quest['total']}</small>
+                    </div>
+                    <div style="width: 100%; height: 8px; background: #e9ecef; border-radius: 4px;">
+                        <div style="width: {progress_pct}%; height: 100%; background: linear-gradient(90deg, #28a745, #20c997); border-radius: 4px;"></div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if quest["active"] and st.button(f"Complete '{quest['title']}'", key=f"complete_{quest['title'].replace(' ', '_')}"):
+                xp_reward = int(quest["reward"].split()[0])
+                user["xp"] += xp_reward
+
+                if user["xp"] >= user["xp_to_next"]:
+                    user["level"] += 1
+                    user["xp"] = user["xp"] - user["xp_to_next"]
+                    user["xp_to_next"] = int(user["xp_to_next"] * 1.2)
+                    st.balloons()
+                    st.success(f"🎉 Level Up! You are now Level {user['level']}!")
+
+                    # Avatar evolution message
+                    new_avatar_gif = avatar_data["level_gifs"].get(user["level"], avatar_gif)
+                    if new_avatar_gif != avatar_gif:
+                        st.info(f"🌟 Your avatar evolved! {avatar_data['name']} is now more powerful!")
+
+                else:
+                    st.success(f"Quest completed! +{xp_reward} XP")
+                time.sleep(0.5)
+                st.rerun()
+
+    with tab2:
+        st.header("🏋️ Physique Builder Engine")
+
+        # Sidebar inputs for physique builder
+        st.sidebar.header("⚡ Profile Setup")
+
+        age = st.sidebar.number_input("Age", min_value=16, max_value=70, value=24)
+        sex = st.sidebar.selectbox("Sex", ["Male", "Female"])
+        height_in = st.sidebar.number_input("Height (inches)", min_value=55.0, max_value=84.0, value=70.0, step=0.5)
+        weight_lb = st.sidebar.number_input("Weight (lb)", min_value=90.0, max_value=400.0, value=170.0, step=1.0)
+        body_fat = st.sidebar.number_input("Body Fat %", min_value=5.0, max_value=45.0, value=16.0, step=0.5)
+
+        training_age = st.sidebar.selectbox("Training Level", ["Beginner", "Novice", "Intermediate", "Advanced"])
+        goal = st.sidebar.selectbox("Goal", ["Lean Bulk", "Fat Loss", "Recomp", "Strength"])
+        target_build = st.sidebar.selectbox("Target Build", ["Lean Actor", "Athletic Hero", "Balanced", "Powerlifter"])
+
+        days_per_week = st.sidebar.slider("Training Days/Week", 2, 6, 4)
+        sleep_hours = st.sidebar.slider("Sleep Hours", 4.0, 10.0, 7.0, 0.5)
+        stress_level = st.sidebar.slider("Stress Level (1-10)", 1, 10, 5)
+        steps_per_day = st.sidebar.slider("Daily Steps", 1000, 20000, 6500, 500)
+        hydration_liters = st.sidebar.slider("Water Intake (L)", 0.5, 6.0, 2.5, 0.1)
+        protein_g = st.sidebar.number_input("Daily Protein (g)", 40, 350, 140, 5)
+        calories = st.sidebar.number_input("Daily Calories", 1000, 6000, 2400, 50)
+
+        st.sidebar.header("💪 Current Lifts")
+        bench_5rm = st.sidebar.number_input("Bench Press 5RM (lb)", 0, 700, 165, 5)
+        barbell_row_5rm = st.sidebar.number_input("Barbell Row 5RM (lb)", 0, 500, 135, 5)
+        pullups_reps = st.sidebar.number_input("Pull-ups (max)", 0, 40, 6)
+        strict_pushups_reps = st.sidebar.number_input("Push-ups (max)", 0, 100, 20)
+
+        if st.sidebar.button("🚀 Generate Plan", type="primary"):
+            # Create profile and calculate
+            profile = UserProfile(
+                age=age, sex=sex, height_in=height_in, weight_lb=weight_lb, body_fat=body_fat,
+                training_age=training_age, goal=goal, target_build=target_build, days_per_week=days_per_week,
+                sleep_hours=sleep_hours, stress_level=stress_level, steps_per_day=steps_per_day,
+                hydration_liters=hydration_liters, protein_g=protein_g, calories=calories,
+                injuries="", equipment="Full Gym"
+            )
+
+            lifts = LiftInputs(bench_5rm=bench_5rm, barbell_row_5rm=barbell_row_5rm,
+                             pullups_reps=pullups_reps, strict_pushups_reps=strict_pushups_reps)
+
+            # Calculate scores
+            strength_score, ratios = compute_strength_score(profile, lifts)
+            recovery_score = compute_recovery_score(profile)
+            balance_score = compute_balance_score(profile, lifts)
+            physique_match_score = compute_physique_match_score(profile)
+            hypertrophy_score = compute_hypertrophy_score(profile, lifts)
+            overall_score = compute_overall_rating(strength_score, recovery_score, balance_score, physique_match_score, hypertrophy_score)
+
+            # Generate program
+            split, program = generate_program(profile, lifts)
+            recovery_recs = generate_recovery_recommendations(profile, recovery_score)
+            supplement_recs = generate_supplement_recommendations(profile)
+
+            ffmi = compute_ffmi(profile.height_in, profile.weight_lb, profile.body_fat)
+            bmi = compute_bmi(profile.height_in, profile.weight_lb)
+
+            # Display results
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
+            stats = [
+                ("Overall", overall_score), ("Strength", strength_score), ("Recovery", recovery_score),
+                ("Balance", balance_score), ("Hypertrophy", hypertrophy_score), ("Physique Match", physique_match_score)
+            ]
+
+            for col, (label, score) in zip([col1, col2, col3, col4, col5, col6], stats):
+                with col:
+                    st.markdown('<div class="card primary-card">', unsafe_allow_html=True)
+                    st.metric(label=label, value=f"{score:.0f}/100")
+                    st.progress(int(score))
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+            # Program display
+            st.subheader("📋 Your Training Program")
+            st.info(f"**Recommended Split:** {split}")
+
+            for day in program[:3]:  # Show first 3 days
+                with st.expander(f"{day['day']} — {day['focus']}", expanded=False):
+                    st.write("**Exercises:**")
+                    for ex_name, sets, reps, key in day["exercises"][:4]:  # Show first 4 exercises
+                        weight_hint = estimate_working_weight_with_reps(key, reps, lifts, profile.goal)
+                        st.write(f"- {ex_name}: {sets} sets × {reps} reps @{weight_hint}")
+
+            # Recovery recommendations
+            st.subheader("🛌 Recovery Tips")
+            for rec in recovery_recs[:3]:
+                st.write(f"• {rec}")
+
+    with tab3:
+        st.header("🏆 Achievements")
+
+        achievements = [
+            {"name": "First Steps", "description": "Complete your first workout", "unlocked": True, "rarity": "Common"},
+            {"name": "Consistency King", "description": "Work out for 30 consecutive days", "unlocked": True, "rarity": "Rare"},
+            {"name": "Strength Master", "description": "Bench press 225+ lbs", "unlocked": True, "rarity": "Epic"},
+            {"name": "Nutrition Guru", "description": "Hit protein goals for 30 days", "unlocked": False, "rarity": "Rare"},
+            {"name": "Transformation", "description": "Lose 20 lbs of fat", "unlocked": False, "rarity": "Legendary"}
+        ]
+
+        unlocked_count = sum(1 for a in achievements if a["unlocked"])
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Achievements Unlocked", f"{unlocked_count}/{len(achievements)}")
+        with col2:
+            st.metric("Total Points", user["xp"])
+        with col3:
+            st.metric("Current Streak", "12 days")
+
+        for achievement in achievements:
+            if achievement["unlocked"]:
+                rarity_colors = {"Common": "#6c757d", "Rare": "#007bff", "Epic": "#6f42c1", "Legendary": "#fd7e14"}
+                color = rarity_colors.get(achievement["rarity"], "#6c757d")
+
+                st.markdown(f"""
+                <div class="achievement-card" style="border: 3px solid {color};">
+                    <h4>🏆 {achievement['name']}</h4>
+                    <p>{achievement['description']}</p>
+                    <small style="opacity: 0.8;">{achievement['rarity'].upper()}</small>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="quest-card" style="opacity: 0.6;">
+                    <h4>🔒 {achievement['name']}</h4>
+                    <p>{achievement['description']}</p>
+                    <small>{achievement['rarity'].upper()}</small>
+                </div>
+                """, unsafe_allow_html=True)
+
+    with tab4:
+        st.header("📊 Character Stats")
+
+        # Character stats grid
+        stats = [
+            {"name": "Strength", "value": 85, "max": 100, "color": "#dc3545"},
+            {"name": "Endurance", "value": 72, "max": 100, "color": "#28a745"},
+            {"name": "Recovery", "value": 68, "max": 100, "color": "#007bff"},
+            {"name": "Nutrition", "value": 91, "max": 100, "color": "#ffc107"},
+            {"name": "Consistency", "value": 78, "max": 100, "color": "#6f42c1"},
+            {"name": "Technique", "value": 82, "max": 100, "color": "#fd7e14"}
+        ]
+
+        cols = st.columns(2)
+        for i, stat in enumerate(stats):
+            with cols[i % 2]:
+                st.markdown(f"""
+                <div class="stat-card">
+                    <h4>{stat['name']}</h4>
+                    <div style="font-size: 2rem; font-weight: bold; color: {stat['color']};">
+                        {stat['value']}/{stat['max']}
+                    </div>
+                    <div style="width: 100%; height: 8px; background: #e9ecef; border-radius: 4px; margin-top: 10px;">
+                        <div style="width: {stat['value']}%; height: 100%; background: {stat['color']}; border-radius: 4px;"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    with tab5:
+        st.header("👥 Global Leaderboard")
+
+        # Sort users by level (descending), then by XP (descending)
+        sorted_users = sorted(st.session_state.all_users,
+                             key=lambda x: (x["level"], x["xp"]), reverse=True)
+
+        # Add rank to each user
+        for i, user_data in enumerate(sorted_users, 1):
+            user_data["rank"] = i
+
+        # Find current user
+        current_user_data = next((u for u in sorted_users if u.get("username") == user["username"]), None)
+
+        # Show current user's rank prominently
+        if current_user_data:
+            rank = current_user_data["rank"]
+            total_players = len(sorted_users)
+
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 20px;">
+                <h3>🏆 Your Rank: #{rank} of {total_players}</h3>
+                <p>You are in the top {int((total_players - rank + 1) / total_players * 100)}% of players!</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Show top 10 players
+        st.subheader("Top Champions")
+        for player in sorted_users[:10]:
+            is_current_user = player.get("username") == user["username"]
+            bg_color = "#e3f2fd" if is_current_user else "white"
+            border_style = "border: 3px solid #007bff;" if is_current_user else ""
+
+            avatar_emoji = AVATARS[player["avatar"]]["level_gifs"].get(player["level"],
+                AVATARS[player["avatar"]]["level_gifs"][1])
+
+            # Rank badge
+            rank_badge = "🥇" if player["rank"] == 1 else "🥈" if player["rank"] == 2 else "🥉" if player["rank"] == 3 else f"#{player['rank']}"
+
+            st.markdown(f"""
+            <div class="leaderboard-item" style="background: {bg_color}; {border_style}">
+                <span style="font-weight: bold; margin-right: 15px; font-size: 1.2rem;">{rank_badge}</span>
+                <span style="font-size: 2rem; margin-right: 10px;">{avatar_emoji}</span>
+                <span style="flex-grow: 1; font-weight: bold;">{player['username']}</span>
+                <span style="margin-left: 15px;">Level {player['level']}</span>
+                <span style="margin-left: 15px; color: #28a745; font-weight: bold;">{player['xp']} XP</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.subheader("💬 Community Activity")
+        activities = [
+            f"🏆 {random.choice(sorted_users)['username']} reached Level {random.randint(5, 20)}!",
+            f"💪 {random.choice(sorted_users)['username']} completed 'Upper Body Blast' (+150 XP)",
+            f"🏃 {random.choice(sorted_users)['username']} hit a new cardio PR (+100 XP)",
+            f"⚔️ {random.choice(sorted_users)['username']} finished their daily quest (+200 XP)",
+            f"👑 {random.choice(sorted_users)['username']} unlocked 'Legendary Lifter' achievement!"
+        ]
+
+        for activity in random.sample(activities, 3):
+            st.write(activity)
+
+    # Quick actions at bottom
+    st.markdown("---")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if st.button("⚔️ Start Quest", use_container_width=True):
+            st.info("Choose a quest from the Quests tab!")
+    with col2:
+        if st.button("📝 Log Workout", use_container_width=True):
+            st.success("Workout logged! +50 XP")
+            user["xp"] += 50
+            if user["xp"] >= user["xp_to_next"]:
+                user["level"] += 1
+                user["xp"] = user["xp"] - user["xp_to_next"]
+                user["xp_to_next"] = int(user["xp_to_next"] * 1.2)
+                st.balloons()
+                st.info(f"🎉 Level Up! You are now Level {user['level']}!")
+    with col3:
+        if st.button("🎁 Daily Reward", use_container_width=True):
+            reward_xp = random.randint(10, 50)
+            user["xp"] += reward_xp
+            st.success(f"Daily reward claimed! +{reward_xp} XP")
+    with col4:
+        if st.button("🔄 Switch Account", use_container_width=True):
+            if st.checkbox("Confirm account switch"):
+                st.session_state.user_account = None
+                st.rerun()
     
