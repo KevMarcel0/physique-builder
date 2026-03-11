@@ -1,10 +1,13 @@
 import math
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Dict, List, Tuple
 import streamlit as st
 import random
 import time
+import json
+import os
+from pathlib import Path
 
 # =========================
 # ENHANCED GAMIFIED PHYSIQUE BUILDER WITH ACCOUNTS & AVATARS
@@ -79,18 +82,70 @@ AVATARS = {
     }
 }
 
-# Initialize session state
+# =========================
+# DATA PERSISTENCE
+# =========================
+USERS_FILE = "users_data.json"
+
+def load_all_users() -> List[Dict]:
+    """Load all users from JSON file"""
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_all_users(users: List[Dict]) -> None:
+    """Save all users to JSON file"""
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=2)
+
+def load_user(username: str) -> Dict | None:
+    """Load a specific user from JSON file"""
+    users = load_all_users()
+    for user in users:
+        if user.get("username") == username:
+            return user
+    return None
+
+def save_user(user: Dict) -> None:
+    """Save or update a user in JSON file"""
+    users = load_all_users()
+    # Remove existing user if present
+    users = [u for u in users if u.get("username") != user.get("username")]
+    # Add updated user
+    users.append(user)
+    save_all_users(users)
+
+def user_exists(username: str) -> bool:
+    """Check if a user already exists"""
+    return load_user(username) is not None
+
+
+# =========================
+# INITIALIZE USERS
+# =========================
+# Load users from file
+if 'all_users' not in st.session_state:
+    saved_users = load_all_users()
+    if saved_users:
+        st.session_state.all_users = saved_users
+    else:
+        # Create default users if no saved data
+        default_users = [
+            {"username": "ProLifter", "avatar": "hero", "level": 12, "xp": 3200, "xp_to_next": 3600},
+            {"username": "FitWarrior", "avatar": "princess", "level": 8, "xp": 1950, "xp_to_next": 2200},
+            {"username": "GainsMaster", "avatar": "guardian", "level": 15, "xp": 4800, "xp_to_next": 5200},
+            {"username": "BeastMode", "avatar": "beast", "level": 6, "xp": 1450, "xp_to_next": 1700},
+            {"username": "MysticGains", "avatar": "mystic", "level": 10, "xp": 2650, "xp_to_next": 2900},
+        ]
+        save_all_users(default_users)
+        st.session_state.all_users = default_users
+
 if 'user_account' not in st.session_state:
     st.session_state.user_account = None
-if 'all_users' not in st.session_state:
-    # Mock user database
-    st.session_state.all_users = [
-        {"username": "ProLifter", "avatar": "hero", "level": 12, "xp": 3200, "xp_to_next": 3600},
-        {"username": "FitWarrior", "avatar": "princess", "level": 8, "xp": 1950, "xp_to_next": 2200},
-        {"username": "GainsMaster", "avatar": "guardian", "level": 15, "xp": 4800, "xp_to_next": 5200},
-        {"username": "BeastMode", "avatar": "beast", "level": 6, "xp": 1450, "xp_to_next": 1700},
-        {"username": "MysticGains", "avatar": "mystic", "level": 10, "xp": 2650, "xp_to_next": 2900},
-    ]
 
 
 # =========================
@@ -881,69 +936,102 @@ if st.session_state.user_account is None:
     # Account Creation Screen
     st.markdown("""
     <div style="text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px; margin-bottom: 30px;">
-        <h1>🎮 Create Your Fitness Character</h1>
-        <p>Choose your avatar and start your fitness journey!</p>
+        <h1>🎮 Fitness Battle Arena</h1>
+        <p>Login to your character or create a new one!</p>
     </div>
     """, unsafe_allow_html=True)
 
-    col1, col2 = st.columns([1, 2])
+    # Tab for Login vs Create Account
+    login_tab, create_tab = st.tabs(["🔓 Login", "✨ Create Character"])
 
-    with col1:
-        st.subheader("📝 Account Details")
-        username = st.text_input("Choose Username", max_chars=20)
-        if st.button("Generate Random Name"):
-            random_names = ["FitHero", "GainzMaster", "LiftLegend", "MuscleMage", "PowerPaladin", "EnduranceElf"]
-            username = random.choice(random_names)
-            st.rerun()
+    with login_tab:
+        st.subheader("Login to Existing Character")
+        login_username = st.text_input("Enter your username", key="login_username")
+        
+        if st.button("⚔️ Login", type="primary", use_container_width=True):
+            if login_username:
+                user_data = load_user(login_username)
+                if user_data:
+                    st.session_state.user_account = user_data
+                    st.balloons()
+                    st.success(f"Welcome back, {login_username}! Level {user_data['level']}")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"❌ No character found with username '{login_username}'")
+            else:
+                st.error("Please enter a username")
 
-    with col2:
-        st.subheader("🎭 Choose Your Avatar")
+    with create_tab:
+        st.subheader("Create New Character")
+        col1, col2 = st.columns([1, 2])
 
-        # Avatar selection
-        avatar_cols = st.columns(3)
-        selected_avatar = None
+        with col1:
+            st.subheader("📝 Account Details")
+            username = st.text_input("Choose Username", max_chars=20, key="new_username")
+            if st.button("Generate Random Name"):
+                random_names = ["FitHero", "GainzMaster", "LiftLegend", "MuscleMage", "PowerPaladin", "EnduranceElf"]
+                username = random.choice(random_names)
+                st.rerun()
 
-        for i, (avatar_key, avatar_data) in enumerate(AVATARS.items()):
-            with avatar_cols[i % 3]:
-                # Get current level gif (default to level 1)
-                current_gif = avatar_data["level_gifs"][1]
+        with col2:
+            st.subheader("🎭 Choose Your Avatar")
 
-                if st.button(f"{current_gif}\n{avatar_data['name']}", key=f"avatar_{avatar_key}"):
-                    selected_avatar = avatar_key
+            # Avatar selection
+            avatar_cols = st.columns(3)
+            selected_avatar = None
 
-                st.caption(avatar_data["description"])
-                st.markdown("---")
+            for i, (avatar_key, avatar_data) in enumerate(AVATARS.items()):
+                with avatar_cols[i % 3]:
+                    # Get current level gif (default to level 1)
+                    current_gif = avatar_data["level_gifs"][1]
 
-        if selected_avatar:
-            st.session_state.selected_avatar = selected_avatar
-            st.success(f"Selected: {AVATARS[selected_avatar]['name']}")
+                    if st.button(f"{current_gif}\n{avatar_data['name']}", key=f"avatar_{avatar_key}"):
+                        selected_avatar = avatar_key
 
-    # Create account button
-    if username and hasattr(st.session_state, 'selected_avatar'):
-        if st.button("🚀 Create Character & Start Journey!", type="primary", use_container_width=True):
-            # Create new user account
-            new_user = {
-                "username": username,
-                "avatar": st.session_state.selected_avatar,
-                "level": 1,
-                "xp": 0,
-                "xp_to_next": 200,
-                "achievements": ["Welcome Warrior"],
-                "join_date": time.time()
-            }
+                    st.caption(avatar_data["description"])
+                    st.markdown("---")
 
-            st.session_state.user_account = new_user
-            st.session_state.all_users.append(new_user)
-            st.balloons()
-            st.success(f"Welcome, {username}! Your fitness adventure begins now!")
-            time.sleep(2)
-            st.rerun()
+            if selected_avatar:
+                st.session_state.selected_avatar = selected_avatar
+                st.success(f"Selected: {AVATARS[selected_avatar]['name']}")
 
-    st.markdown("---")
-    st.subheader("👥 Existing Players")
-    for user in random.sample(st.session_state.all_users, min(3, len(st.session_state.all_users))):
-        avatar_emoji = AVATARS[user["avatar"]]["level_gifs"].get(user["level"], AVATARS[user["avatar"]]["level_gifs"][1])
-        st.write(f"{avatar_emoji} **{user['username']}** - Level {user['level']}")
+        # Create account button
+        if username and hasattr(st.session_state, 'selected_avatar'):
+            if st.button("🚀 Create Character & Start Journey!", type="primary", use_container_width=True):
+                # Check if username already exists
+                if user_exists(username):
+                    st.error(f"❌ Username '{username}' already taken! Try another one.")
+                else:
+                    # Create new user account
+                    new_user = {
+                        "username": username,
+                        "avatar": st.session_state.selected_avatar,
+                        "level": 1,
+                        "xp": 0,
+                        "xp_to_next": 200,
+                        "achievements": ["Welcome Warrior"],
+                        "join_date": time.time()
+                    }
+
+                    # Save to JSON file
+                    save_user(new_user)
+                    
+                    # Update session state
+                    st.session_state.user_account = new_user
+                    st.session_state.all_users.append(new_user)
+                    
+                    st.balloons()
+                    st.success(f"Welcome, {username}! Your fitness adventure begins now! 🎮")
+                    time.sleep(2)
+                    st.rerun()
+
+        st.markdown("---")
+        st.subheader("👥 Existing Players")
+        sample_users = random.sample(st.session_state.all_users, min(3, len(st.session_state.all_users)))
+        for user in sample_users:
+            avatar_emoji = AVATARS[user["avatar"]]["level_gifs"].get(user["level"], AVATARS[user["avatar"]]["level_gifs"][1])
+            st.write(f"{avatar_emoji} **{user['username']}** - Level {user['level']}")
 
 else:
     # Main Game Interface
@@ -1057,6 +1145,10 @@ else:
 
                 else:
                     st.success(f"Quest completed! +{xp_reward} XP")
+                
+                # Save user data to JSON file
+                save_user(user)
+                st.session_state.user_account = user
                 time.sleep(0.5)
                 st.rerun()
 
@@ -1297,11 +1389,17 @@ else:
                 user["xp_to_next"] = int(user["xp_to_next"] * 1.2)
                 st.balloons()
                 st.info(f"🎉 Level Up! You are now Level {user['level']}!")
+            # Save user data to JSON file
+            save_user(user)
+            st.session_state.user_account = user
     with col3:
         if st.button("🎁 Daily Reward", use_container_width=True):
             reward_xp = random.randint(10, 50)
             user["xp"] += reward_xp
             st.success(f"Daily reward claimed! +{reward_xp} XP")
+            # Save user data to JSON file
+            save_user(user)
+            st.session_state.user_account = user
     with col4:
         if st.button("🔄 Switch Account", use_container_width=True):
             if st.checkbox("Confirm account switch"):
