@@ -103,24 +103,24 @@ def save_all_users(users: List[Dict]) -> None:
         json.dump(users, f, indent=2)
 
 def load_user(username: str) -> Dict | None:
-    """Load a specific user from JSON file"""
+    """Load a specific user from JSON file (case-insensitive)"""
     users = load_all_users()
     for user in users:
-        if user.get("username") == username:
+        if user.get("username", "").lower() == username.lower():
             return user
     return None
 
 def save_user(user: Dict) -> None:
     """Save or update a user in JSON file"""
     users = load_all_users()
-    # Remove existing user if present
-    users = [u for u in users if u.get("username") != user.get("username")]
+    # Remove existing user if present (case-insensitive)
+    users = [u for u in users if u.get("username", "").lower() != user.get("username", "").lower()]
     # Add updated user
     users.append(user)
     save_all_users(users)
 
 def user_exists(username: str) -> bool:
-    """Check if a user already exists"""
+    """Check if a user already exists (case-insensitive)"""
     return load_user(username) is not None
 
 
