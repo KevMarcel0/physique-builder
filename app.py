@@ -752,6 +752,16 @@ def generate_supplement_recommendations(profile: UserProfile) -> List[str]:
 # Custom CSS for game-like UI
 st.markdown("""
 <style>
+/* Full page vibrant background */
+.stApp {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    min-height: 100vh;
+}
+
+.main {
+    background: transparent;
+}
+
 /* Mobile responsive design */
 @media (max-width: 768px) {
     .main .block-container {
