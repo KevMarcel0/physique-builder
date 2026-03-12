@@ -147,6 +147,36 @@ if 'all_users' not in st.session_state:
 if 'user_account' not in st.session_state:
     st.session_state.user_account = None
 
+# --- new simple profile and progression state (added by request) ---
+if 'user_profile_simple' not in st.session_state:
+    st.session_state.user_profile_simple = {
+        "name": "",
+        "age": 0,
+        "weight": 0.0,
+        "fitness_level": "",
+        "goal": "",
+        "environment": ""
+    }
+if 'xp' not in st.session_state:
+    st.session_state.xp = 0
+if 'level' not in st.session_state:
+    st.session_state.level = 1
+if 'xp_to_next' not in st.session_state:
+    st.session_state.xp_to_next = 100
+if 'completed_workouts' not in st.session_state:
+    st.session_state.completed_workouts = 0
+if 'streak' not in st.session_state:
+    st.session_state.streak = 0
+if 'stats_simple' not in st.session_state:
+    st.session_state.stats_simple = {"Strength": 0, "Endurance": 0, "Consistency": 0, "Mobility": 0}
+if 'daily_tasks' not in st.session_state:
+    st.session_state.daily_tasks = []
+if 'weekly_goals' not in st.session_state:
+    st.session_state.weekly_goals = []
+if 'progress_history' not in st.session_state:
+    st.session_state.progress_history = []
+
+
 
 # =========================
 # DATA MODELS
@@ -315,7 +345,17 @@ def get_target_profile(target_build: str) -> Dict[str, float]:
             "conditioning": 1.00,
         }
     }
-    return profiles[target_build]
+    # fall back to a default if key missing
+    return profiles.get(target_build, {
+        "target_bf_male": 12.5,
+        "target_bf_female": 21.0,
+        "lat_emphasis": 1.0,
+        "shoulder_emphasis": 1.0,
+        "chest_emphasis": 1.0,
+        "leg_emphasis": 1.0,
+        "arm_emphasis": 1.0,
+        "conditioning": 1.0,
+    })
 
 
 # =========================
@@ -955,6 +995,120 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- helper functions for new features ---
+
+def sync_session_state(user: Dict):
+    # copy persisted values into session state when a user logs in
+    st.session_state.xp = user.get("xp", st.session_state.xp)
+    st.session_state.level = user.get("level", st.session_state.level)
+    st.session_state.xp_to_next = user.get("xp_to_next", st.session_state.xp_to_next)
+    st.session_state.completed_workouts = user.get("completed_workouts", st.session_state.completed_workouts)
+    st.session_state.streak = user.get("streak", st.session_state.streak)
+    st.session_state.stats_simple = user.get("stats_simple", st.session_state.stats_simple)
+    st.session_state.weekly_goals = user.get("weekly_goals", st.session_state.weekly_goals)
+    st.session_state.daily_tasks = user.get("daily_tasks", st.session_state.daily_tasks)
+    st.session_state.user_profile_simple = user.get("profile_simple", st.session_state.user_profile_simple)
+
+
+def store_session_state(user: Dict):
+    # push session values back into user dict so they persist across logins
+    user["xp"] = st.session_state.xp
+    user["level"] = st.session_state.level
+    user["xp_to_next"] = st.session_state.xp_to_next
+    user["completed_workouts"] = st.session_state.completed_workouts
+    user["streak"] = st.session_state.streak
+    user["stats_simple"] = st.session_state.stats_simple
+    user["weekly_goals"] = st.session_state.weekly_goals
+    user["daily_tasks"] = st.session_state.daily_tasks
+    user["profile_simple"] = st.session_state.user_profile_simple
+
+
+def update_xp(amount: int, user: Dict = None):
+    st.session_state.xp += amount
+    st.session_state.progress_history.append({"time": time.time(), "xp": amount})
+    # level-up logic
+    while st.session_state.xp >= st.session_state.xp_to_next:
+        st.session_state.xp -= st.session_state.xp_to_next
+        st.session_state.level += 1
+        st.session_state.xp_to_next = int(st.session_state.xp_to_next * 1.2)
+        st.balloons()
+    if user:
+        store_session_state(user)
+        save_user(user)
+        st.session_state.user_account = user
+
+
+def render_profile_simple():
+    st.subheader("👤 User Profile")
+    with st.form("simple_profile_form"):
+        p = st.session_state.user_profile_simple
+        p["name"] = st.text_input("Name", p["name"])
+        p["age"] = st.number_input("Age", min_value=10, max_value=100, value=p["age"])
+        p["weight"] = st.number_input("Weight (lbs)", min_value=50.0, max_value=500.0, value=p["weight"])
+        p["fitness_level"] = st.selectbox("Fitness Level", ["Beginner", "Intermediate", "Advanced"],
+                                         index=["Beginner", "Intermediate", "Advanced"].index(p.get("fitness_level","Beginner")))
+        p["goal"] = st.selectbox("Primary Goal", ["Fat Loss", "Muscle Gain", "Endurance", "General Fitness"],
+                                  index=["Fat Loss", "Muscle Gain", "Endurance", "General Fitness"].index(p.get("goal","General Fitness")))
+        p["environment"] = st.selectbox("Workout Environment", ["Gym", "Home", "Bodyweight Only"],
+                                         index=["Gym", "Home", "Bodyweight Only"].index(p.get("environment","Gym")))
+        submitted = st.form_submit_button("Save Profile")
+        if submitted:
+            st.success("Profile information updated.")
+            if st.session_state.user_account:
+                user = st.session_state.user_account
+                user["profile_simple"] = p
+                store_session_state(user)
+                save_user(user)
+
+
+def render_daily_tasks():
+    st.subheader("📝 Daily Tasks")
+    # sample tasks initialization
+    if not st.session_state.daily_tasks:
+        st.session_state.daily_tasks = [
+            {"name": "Push-Ups", "details": "3×15", "difficulty": "Easy", "reward": 10, "done": False, "stat": "Strength"},
+            {"name": "Plank", "details": "60 sec", "difficulty": "Medium", "reward": 15, "done": False, "stat": "Endurance"},
+        ]
+    for i, t in enumerate(st.session_state.daily_tasks):
+        cols = st.columns([3,2,1,1,1])
+        cols[0].write(f"**{t['name']}**")
+        cols[1].write(t['details'])
+        cols[2].write(t['difficulty'])
+        cols[3].write(f"XP {t['reward']}")
+        chk = cols[4].checkbox("", value=t['done'], key=f"task_{i}")
+        if chk and not t['done']:
+            t['done'] = True
+            update_xp(t['reward'], st.session_state.user_account if st.session_state.user_account else None)
+            st.session_state.stats_simple[t['stat']] += 1
+            st.session_state.completed_workouts += 1
+            st.session_state.streak += 1
+            cols[4].success("✅")
+
+
+def render_weekly_goals():
+    st.subheader("📅 Weekly Goals")
+    if not st.session_state.weekly_goals:
+        st.session_state.weekly_goals = [
+            {"name": "4 workouts", "progress": 0, "target": 4},
+            {"name": "20k steps", "progress": 0, "target": 20000},
+            {"name": "2 strength sessions", "progress": 0, "target": 2},
+        ]
+    for g in st.session_state.weekly_goals:
+        st.write(f"**{g['name']}**")
+        st.progress(g['progress']/g['target'])
+        st.write(f"{g['progress']}/{g['target']}")
+
+
+def render_progress_dashboard():
+    st.subheader("📈 Progress Dashboard")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Completed Workouts", st.session_state.completed_workouts)
+    col2.metric("Current Streak", f"{st.session_state.streak} days")
+    col3.metric("Total XP", st.session_state.xp)
+    col4.metric("Level", st.session_state.level)
+    # stat improvements
+    for name, val in st.session_state.stats_simple.items():
+        st.write(f"{name}: {val}")
 
 # Check if user has account
 if st.session_state.user_account is None:
@@ -978,6 +1132,8 @@ if st.session_state.user_account is None:
                 user_data = load_user(login_username)
                 if user_data:
                     st.session_state.user_account = user_data
+                    # copy persisted values into session_state
+                    sync_session_state(user_data)
                     st.balloons()
                     st.success(f"Welcome back, {login_username}! Level {user_data['level']}")
                     time.sleep(1)
@@ -1036,7 +1192,19 @@ if st.session_state.user_account is None:
                         "xp": 0,
                         "xp_to_next": 200,
                         "achievements": ["Welcome Warrior"],
-                        "join_date": time.time()
+                        "join_date": time.time(),
+                        # profile tracking - force first‑time setup
+                        "profile_created": False,
+                        # optional storage slots for profile/lifts
+                        "profile": {},
+                    "lifts": {},
+                    # new tracking fields for profile/tasks/goals
+                    "profile_simple": {"name":"","age":0,"weight":0.0,"fitness_level":"","goal":"","environment":""},
+                    "completed_workouts": 0,
+                    "streak": 0,
+                    "stats_simple": {"Strength":0, "Endurance":0, "Consistency":0, "Mobility":0},
+                    "daily_tasks": [],
+                    "weekly_goals": []
                     }
 
                     # Save to JSON file
@@ -1045,6 +1213,8 @@ if st.session_state.user_account is None:
                     # Update session state
                     st.session_state.user_account = new_user
                     st.session_state.all_users.append(new_user)
+                    # sync newly created user data into session state
+                    sync_session_state(new_user)
                     
                     st.balloons()
                     st.success(f"Welcome, {username}! Your fitness adventure begins now! 🎮")
@@ -1061,6 +1231,69 @@ if st.session_state.user_account is None:
 else:
     # Main Game Interface
     user = st.session_state.user_account
+    # ensure session_state mirrors stored user data
+    sync_session_state(user)
+
+    # simple user profile form in sidebar (new feature)
+    with st.sidebar:
+        render_profile_simple()
+
+    # if the user has never completed the profile setup, show builder first
+    if not user.get("profile_created", False):
+        st.warning("🎯 Finish setting up your physique profile to get personalized guidance below!")
+        # prefill with stored profile data if any (should be empty for new users)
+        stored = user.get("profile", {})
+        stored_lifts = user.get("lifts", {})
+
+        # render the same sidebar inputs as in the Physique Builder tab
+        st.sidebar.header("⚡ Profile Setup")
+        age = st.sidebar.number_input("Age", min_value=16, max_value=70, value=stored.get("age", 24))
+        sex = st.sidebar.selectbox("Sex", ["Male", "Female"], index=0 if stored.get("sex","Male")=="Male" else 1)
+        height_in = st.sidebar.number_input("Height (inches)", min_value=55.0, max_value=84.0, value=stored.get("height_in", 70.0), step=0.5)
+        weight_lb = st.sidebar.number_input("Weight (lb)", min_value=90.0, max_value=400.0, value=stored.get("weight_lb", 170.0), step=1.0)
+        body_fat = st.sidebar.number_input("Body Fat %", min_value=5.0, max_value=45.0, value=stored.get("body_fat", 16.0), step=0.5)
+
+        training_age = st.sidebar.selectbox("Training Level", ["Beginner", "Novice", "Intermediate", "Advanced"],
+                                           index=["Beginner","Novice","Intermediate","Advanced"].index(stored.get("training_age","Beginner")))
+        goal = st.sidebar.selectbox("Goal", ["Lean Bulk", "Fat Loss", "Recomp", "Strength"],
+                                    index=["Lean Bulk","Fat Loss","Recomp","Strength"].index(stored.get("goal","Lean Bulk")))
+        target_build = st.sidebar.selectbox("Target Build", [
+            "Lean Actor Build", "Athletic Superhero Build", "Balanced Aesthetic Build", "Powerlifter Build"
+        ],
+            index=["Lean Actor Build","Athletic Superhero Build","Balanced Aesthetic Build","Powerlifter Build"].index(
+                stored.get("target_build","Lean Actor Build")))
+
+        days_per_week = st.sidebar.slider("Training Days/Week", 2, 6, stored.get("days_per_week",4))
+        sleep_hours = st.sidebar.slider("Sleep Hours", 4.0, 10.0, stored.get("sleep_hours",7.0), 0.5)
+        stress_level = st.sidebar.slider("Stress Level (1-10)", 1, 10, stored.get("stress_level",5))
+        steps_per_day = st.sidebar.slider("Daily Steps", 1000, 20000, stored.get("steps_per_day",6500), 500)
+        hydration_liters = st.sidebar.slider("Water Intake (L)", 0.5, 6.0, stored.get("hydration_liters",2.5), 0.1)
+        protein_g = st.sidebar.number_input("Daily Protein (g)", 40, 350, stored.get("protein_g",140), 5)
+        calories = st.sidebar.number_input("Daily Calories", 1000, 6000, stored.get("calories",2400), 50)
+
+        st.sidebar.header("💪 Current Lifts")
+        bench_5rm = st.sidebar.number_input("Bench Press 5RM (lb)", 0, 700, stored_lifts.get("bench_5rm",165), 5)
+        barbell_row_5rm = st.sidebar.number_input("Barbell Row 5RM (lb)", 0, 500, stored_lifts.get("barbell_row_5rm",135), 5)
+        pullups_reps = st.sidebar.number_input("Pull-ups (max)", 0, 40, stored_lifts.get("pullups_reps",6))
+        strict_pushups_reps = st.sidebar.number_input("Push-ups (max)", 0, 100, stored_lifts.get("strict_pushups_reps",20))
+
+        if st.sidebar.button("🚀 Generate Plan", type="primary"):
+            profile = UserProfile(
+                age=age, sex=sex, height_in=height_in, weight_lb=weight_lb, body_fat=body_fat,
+                training_age=training_age, goal=goal, target_build=target_build, days_per_week=days_per_week,
+                sleep_hours=sleep_hours, stress_level=stress_level, steps_per_day=steps_per_day,
+                hydration_liters=hydration_liters, protein_g=protein_g, calories=calories,
+                injuries="", equipment="Full Gym"
+            )
+            lifts = LiftInputs(bench_5rm=bench_5rm, barbell_row_5rm=barbell_row_5rm,
+                                pullups_reps=pullups_reps, strict_pushups_reps=strict_pushups_reps)
+            # persist and mark complete
+            user["profile"] = asdict(profile)
+            user["lifts"] = asdict(lifts)
+            user["profile_created"] = True
+            save_user(user)
+            st.success("Profile saved! You can now revisit the Physique Builder tab anytime.")
+            st.experimental_rerun()
 
     # Get current avatar based on level
     current_level = user["level"]
@@ -1177,35 +1410,51 @@ else:
                 time.sleep(0.5)
                 st.rerun()
 
+        # --- new features below existing quests ---
+        st.markdown("---")
+        render_daily_tasks()
+        render_weekly_goals()
+        render_progress_dashboard()
+
     with tab2:
         st.header("🏋️ Physique Builder Engine")
 
         # Sidebar inputs for physique builder
         st.sidebar.header("⚡ Profile Setup")
 
-        age = st.sidebar.number_input("Age", min_value=16, max_value=70, value=24)
-        sex = st.sidebar.selectbox("Sex", ["Male", "Female"])
-        height_in = st.sidebar.number_input("Height (inches)", min_value=55.0, max_value=84.0, value=70.0, step=0.5)
-        weight_lb = st.sidebar.number_input("Weight (lb)", min_value=90.0, max_value=400.0, value=170.0, step=1.0)
-        body_fat = st.sidebar.number_input("Body Fat %", min_value=5.0, max_value=45.0, value=16.0, step=0.5)
+        # prefill with existing data if available
+        stored = user.get("profile", {})
+        stored_lifts = user.get("lifts", {})
 
-        training_age = st.sidebar.selectbox("Training Level", ["Beginner", "Novice", "Intermediate", "Advanced"])
-        goal = st.sidebar.selectbox("Goal", ["Lean Bulk", "Fat Loss", "Recomp", "Strength"])
-        target_build = st.sidebar.selectbox("Target Build", ["Lean Actor", "Athletic Hero", "Balanced", "Powerlifter"])
+        age = st.sidebar.number_input("Age", min_value=16, max_value=70, value=stored.get("age", 24))
+        sex = st.sidebar.selectbox("Sex", ["Male", "Female"], index=0 if stored.get("sex","Male")=="Male" else 1)
+        height_in = st.sidebar.number_input("Height (inches)", min_value=55.0, max_value=84.0, value=stored.get("height_in", 70.0), step=0.5)
+        weight_lb = st.sidebar.number_input("Weight (lb)", min_value=90.0, max_value=400.0, value=stored.get("weight_lb", 170.0), step=1.0)
+        body_fat = st.sidebar.number_input("Body Fat %", min_value=5.0, max_value=45.0, value=stored.get("body_fat", 16.0), step=0.5)
 
-        days_per_week = st.sidebar.slider("Training Days/Week", 2, 6, 4)
-        sleep_hours = st.sidebar.slider("Sleep Hours", 4.0, 10.0, 7.0, 0.5)
-        stress_level = st.sidebar.slider("Stress Level (1-10)", 1, 10, 5)
-        steps_per_day = st.sidebar.slider("Daily Steps", 1000, 20000, 6500, 500)
-        hydration_liters = st.sidebar.slider("Water Intake (L)", 0.5, 6.0, 2.5, 0.1)
-        protein_g = st.sidebar.number_input("Daily Protein (g)", 40, 350, 140, 5)
-        calories = st.sidebar.number_input("Daily Calories", 1000, 6000, 2400, 50)
+        training_age = st.sidebar.selectbox("Training Level", ["Beginner", "Novice", "Intermediate", "Advanced"],
+                                           index=["Beginner","Novice","Intermediate","Advanced"].index(stored.get("training_age","Beginner")))
+        goal = st.sidebar.selectbox("Goal", ["Lean Bulk", "Fat Loss", "Recomp", "Strength"],
+                                    index=["Lean Bulk","Fat Loss","Recomp","Strength"].index(stored.get("goal","Lean Bulk")))
+        target_build = st.sidebar.selectbox("Target Build", [
+            "Lean Actor Build", "Athletic Superhero Build", "Balanced Aesthetic Build", "Powerlifter Build"
+        ],
+            index=["Lean Actor Build","Athletic Superhero Build","Balanced Aesthetic Build","Powerlifter Build"].index(
+                stored.get("target_build","Lean Actor Build")))
+
+        days_per_week = st.sidebar.slider("Training Days/Week", 2, 6, stored.get("days_per_week",4))
+        sleep_hours = st.sidebar.slider("Sleep Hours", 4.0, 10.0, stored.get("sleep_hours",7.0), 0.5)
+        stress_level = st.sidebar.slider("Stress Level (1-10)", 1, 10, stored.get("stress_level",5))
+        steps_per_day = st.sidebar.slider("Daily Steps", 1000, 20000, stored.get("steps_per_day",6500), 500)
+        hydration_liters = st.sidebar.slider("Water Intake (L)", 0.5, 6.0, stored.get("hydration_liters",2.5), 0.1)
+        protein_g = st.sidebar.number_input("Daily Protein (g)", 40, 350, stored.get("protein_g",140), 5)
+        calories = st.sidebar.number_input("Daily Calories", 1000, 6000, stored.get("calories",2400), 50)
 
         st.sidebar.header("💪 Current Lifts")
-        bench_5rm = st.sidebar.number_input("Bench Press 5RM (lb)", 0, 700, 165, 5)
-        barbell_row_5rm = st.sidebar.number_input("Barbell Row 5RM (lb)", 0, 500, 135, 5)
-        pullups_reps = st.sidebar.number_input("Pull-ups (max)", 0, 40, 6)
-        strict_pushups_reps = st.sidebar.number_input("Push-ups (max)", 0, 100, 20)
+        bench_5rm = st.sidebar.number_input("Bench Press 5RM (lb)", 0, 700, stored_lifts.get("bench_5rm",165), 5)
+        barbell_row_5rm = st.sidebar.number_input("Barbell Row 5RM (lb)", 0, 500, stored_lifts.get("barbell_row_5rm",135), 5)
+        pullups_reps = st.sidebar.number_input("Pull-ups (max)", 0, 40, stored_lifts.get("pullups_reps",6))
+        strict_pushups_reps = st.sidebar.number_input("Push-ups (max)", 0, 100, stored_lifts.get("strict_pushups_reps",20))
 
         if st.sidebar.button("🚀 Generate Plan", type="primary"):
             # Create profile and calculate
@@ -1219,6 +1468,15 @@ else:
 
             lifts = LiftInputs(bench_5rm=bench_5rm, barbell_row_5rm=barbell_row_5rm,
                              pullups_reps=pullups_reps, strict_pushups_reps=strict_pushups_reps)
+
+            # if user is logged in, persist inputs
+            if st.session_state.user_account:
+                user = st.session_state.user_account
+                user["profile"] = asdict(profile)
+                user["lifts"] = asdict(lifts)
+                user["profile_created"] = True
+                save_user(user)
+                st.session_state.user_account = user
 
             # Calculate scores
             strength_score, ratios = compute_strength_score(profile, lifts)
@@ -1312,14 +1570,16 @@ else:
         st.header("📊 Character Stats")
 
         # Character stats grid
-        stats = [
-            {"name": "Strength", "value": 85, "max": 100, "color": "#dc3545"},
-            {"name": "Endurance", "value": 72, "max": 100, "color": "#28a745"},
-            {"name": "Recovery", "value": 68, "max": 100, "color": "#007bff"},
-            {"name": "Nutrition", "value": 91, "max": 100, "color": "#ffc107"},
-            {"name": "Consistency", "value": 78, "max": 100, "color": "#6f42c1"},
-            {"name": "Technique", "value": 82, "max": 100, "color": "#fd7e14"}
-        ]
+        # build stats from session state so we can track them
+        stats = []
+        simple = st.session_state.stats_simple
+        stats.append({"name": "Strength", "value": simple.get("Strength", 0), "max": 100, "color": "#dc3545"})
+        stats.append({"name": "Endurance", "value": simple.get("Endurance", 0), "max": 100, "color": "#28a745"})
+        stats.append({"name": "Consistency", "value": simple.get("Consistency", 0), "max": 100, "color": "#007bff"})
+        stats.append({"name": "Mobility", "value": simple.get("Mobility", 0), "max": 100, "color": "#ffc107"})
+        # keep any legacy stats if desired
+        # stats.append({"name": "Recovery", "value": 68, "max": 100, "color": "#007bff"})
+        # stats.append({"name": "Nutrition", "value": 91, "max": 100, "color": "#ffc107"})
 
         cols = st.columns(2)
         for i, stat in enumerate(stats):
