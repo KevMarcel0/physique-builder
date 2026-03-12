@@ -18,6 +18,48 @@ st.set_page_config(
     layout="wide"
 )
 
+# custom XP thresholds for each level (index i corresponds to level i)
+LEVEL_XP_THRESHOLDS = [0, 200, 300, 400, 500, 650, 800, 1000, 1200, 1500, 1800]
+
+# XP rewards for common bodyweight exercises (balanced for 4-6 day level ups)
+EXERCISE_XP = {
+    "Push-Ups": 20,
+    "Squats": 20,
+    "Lunges": 20,
+    "Sit-Ups": 15,
+    "Plank": 15,
+    "Pull-Ups": 25,
+}
+
+# stat effects for exercises
+# map each exercise to stat increments (can be >1)
+STAT_EFFECTS = {
+    "Push-Ups": {"Strength": 2},
+    "Squats": {"Strength": 2},
+    "Lunges": {"Strength": 2},
+    "Pull-Ups": {"Strength": 2},
+    "Running": {"Endurance": 2},
+    "Cycling": {"Endurance": 2},
+    "Jump Rope": {"Endurance": 2},
+    "Cardio": {"Endurance": 2},
+    "Long Workout": {"Endurance": 2},
+    "Plank": {"Endurance": 1},
+    "Sit-Ups": {"Endurance": 1},
+    "Stretching": {"Mobility": 2},
+    "Yoga": {"Mobility": 2},
+    "Cooldown": {"Mobility": 2},
+}
+# Consistency handled separately on every completion / streak
+
+
+
+def xp_threshold_for_level(level: int) -> int:
+    # return XP required to reach given level (based on thresholds table)
+    if level < len(LEVEL_XP_THRESHOLDS):
+        return LEVEL_XP_THRESHOLDS[level]
+    # fallback: approximate linear growth
+    return int(LEVEL_XP_THRESHOLDS[-1] * (1 + 0.2 * (level - len(LEVEL_XP_THRESHOLDS) + 1)))
+
 # Avatar system - Pixelated retro gaming characters
 AVATARS = {
     "hero": {
@@ -162,7 +204,8 @@ if 'xp' not in st.session_state:
 if 'level' not in st.session_state:
     st.session_state.level = 1
 if 'xp_to_next' not in st.session_state:
-    st.session_state.xp_to_next = 100
+    # initial threshold for level 1
+    st.session_state.xp_to_next = xp_threshold_for_level(st.session_state.level)
 if 'completed_workouts' not in st.session_state:
     st.session_state.completed_workouts = 0
 if 'streak' not in st.session_state:
@@ -171,10 +214,21 @@ if 'stats_simple' not in st.session_state:
     st.session_state.stats_simple = {"Strength": 0, "Endurance": 0, "Consistency": 0, "Mobility": 0}
 if 'daily_tasks' not in st.session_state:
     st.session_state.daily_tasks = []
+# track whether the full daily workout bonus has been given
+if 'daily_bonus_given' not in st.session_state:
+    st.session_state.daily_bonus_given = False
 if 'weekly_goals' not in st.session_state:
     st.session_state.weekly_goals = []
+if 'weekly_reward_claimed' not in st.session_state:
+    st.session_state.weekly_reward_claimed = False
 if 'progress_history' not in st.session_state:
     st.session_state.progress_history = []
+if 'workout_log' not in st.session_state:
+    st.session_state.workout_log = []
+if 'stats_history' not in st.session_state:
+    st.session_state.stats_history = []
+if 'longest_streak' not in st.session_state:
+    st.session_state.longest_streak = 0
 
 
 
@@ -1001,7 +1055,8 @@ def sync_session_state(user: Dict):
     # copy persisted values into session state when a user logs in
     st.session_state.xp = user.get("xp", st.session_state.xp)
     st.session_state.level = user.get("level", st.session_state.level)
-    st.session_state.xp_to_next = user.get("xp_to_next", st.session_state.xp_to_next)
+    # always recalc xp_to_next from thresholds rather than trusting stored value
+    st.session_state.xp_to_next = xp_threshold_for_level(st.session_state.level)
     st.session_state.completed_workouts = user.get("completed_workouts", st.session_state.completed_workouts)
     st.session_state.streak = user.get("streak", st.session_state.streak)
     st.session_state.stats_simple = user.get("stats_simple", st.session_state.stats_simple)
@@ -1023,14 +1078,22 @@ def store_session_state(user: Dict):
     user["profile_simple"] = st.session_state.user_profile_simple
 
 
+def xp_threshold_for_level(level: int) -> int:
+    # return XP required to reach given level (based on thresholds table)
+    if level < len(LEVEL_XP_THRESHOLDS):
+        return LEVEL_XP_THRESHOLDS[level]
+    # fallback: approximate linear growth (should not be reached often)
+    return int(LEVEL_XP_THRESHOLDS[-1] * (1 + 0.2 * (level - len(LEVEL_XP_THRESHOLDS) + 1)))
+
+
 def update_xp(amount: int, user: Dict = None):
     st.session_state.xp += amount
     st.session_state.progress_history.append({"time": time.time(), "xp": amount})
-    # level-up logic
+    # level-up logic using thresholds
     while st.session_state.xp >= st.session_state.xp_to_next:
         st.session_state.xp -= st.session_state.xp_to_next
         st.session_state.level += 1
-        st.session_state.xp_to_next = int(st.session_state.xp_to_next * 1.2)
+        st.session_state.xp_to_next = xp_threshold_for_level(st.session_state.level)
         st.balloons()
     if user:
         store_session_state(user)
@@ -1061,13 +1124,31 @@ def render_profile_simple():
                 save_user(user)
 
 
+
+# helper for stat growth
+
+def apply_stat_effects(ex_name: str):
+    # always grant a point of consistency for any workout or task
+    st.session_state.stats_simple["Consistency"] = min(100, st.session_state.stats_simple.get("Consistency", 0) + 1)
+    # increment stats using detailed effects table
+    effects = STAT_EFFECTS.get(ex_name, {})
+    for stat, amt in effects.items():
+        st.session_state.stats_simple[stat] = min(100, st.session_state.stats_simple.get(stat, 0) + amt)
+
+
 def render_daily_tasks():
     st.subheader("📝 Daily Tasks")
     # sample tasks initialization
     if not st.session_state.daily_tasks:
+        # initialize with balanced bodyweight tasks using reward mapping
         st.session_state.daily_tasks = [
-            {"name": "Push-Ups", "details": "3×15", "difficulty": "Easy", "reward": 10, "done": False, "stat": "Strength"},
-            {"name": "Plank", "details": "60 sec", "difficulty": "Medium", "reward": 15, "done": False, "stat": "Endurance"},
+            {"name": "Push-Ups", "details": "3×15", "difficulty": "Easy", "reward": EXERCISE_XP.get("Push-Ups", 20), "done": False, "stat": "Strength"},
+            {"name": "Squats", "details": "3×15", "difficulty": "Easy", "reward": EXERCISE_XP.get("Squats", 20), "done": False, "stat": "Strength"},
+            {"name": "Lunges", "details": "3×12", "difficulty": "Easy", "reward": EXERCISE_XP.get("Lunges", 20), "done": False, "stat": "Strength"},
+            {"name": "Sit-Ups", "details": "3×20", "difficulty": "Easy", "reward": EXERCISE_XP.get("Sit-Ups", 15), "done": False, "stat": "Endurance"},
+            {"name": "Plank", "details": "45 sec", "difficulty": "Medium", "reward": EXERCISE_XP.get("Plank", 15), "done": False, "stat": "Endurance"},
+            {"name": "Pull-Ups", "details": "3×5", "difficulty": "Medium", "reward": EXERCISE_XP.get("Pull-Ups", 25), "done": False, "stat": "Strength"},
+            {"name": "Cardio", "details": "20 min", "difficulty": "Medium", "reward": random.randint(25, 30), "done": False, "stat": "Endurance"},
         ]
     for i, t in enumerate(st.session_state.daily_tasks):
         cols = st.columns([3,2,1,1,1])
@@ -1079,24 +1160,45 @@ def render_daily_tasks():
         if chk and not t['done']:
             t['done'] = True
             update_xp(t['reward'], st.session_state.user_account if st.session_state.user_account else None)
-            st.session_state.stats_simple[t['stat']] += 1
+            apply_stat_effects(t['name'])
             st.session_state.completed_workouts += 1
             st.session_state.streak += 1
             cols[4].success("✅")
+    # award full workout bonus once when all tasks complete
+    if all(t['done'] for t in st.session_state.daily_tasks) and not st.session_state.daily_bonus_given:
+        update_xp(30, st.session_state.user_account if st.session_state.user_account else None)
+        st.session_state.daily_bonus_given = True
+        st.success("Full workout bonus +30 XP!")
 
 
 def render_weekly_goals():
     st.subheader("📅 Weekly Goals")
+    # structured goals with type to allow updates
     if not st.session_state.weekly_goals:
         st.session_state.weekly_goals = [
-            {"name": "4 workouts", "progress": 0, "target": 4},
-            {"name": "20k steps", "progress": 0, "target": 20000},
-            {"name": "2 strength sessions", "progress": 0, "target": 2},
+            {"name": "Complete 5 workouts", "key": "workouts", "progress": 0, "target": 5},
+            {"name": "Workout minutes goal", "key": "minutes", "progress": 0, "target": 150},
+            {"name": "Strength sessions", "key": "strength", "progress": 0, "target": 3},
+            {"name": "Cardio sessions", "key": "cardio", "progress": 0, "target": 2},
+            {"name": "Stretching sessions", "key": "stretch", "progress": 0, "target": 2},
         ]
+    all_done = True
     for g in st.session_state.weekly_goals:
         st.write(f"**{g['name']}**")
-        st.progress(g['progress']/g['target'])
+        pct = min(1.0, g['progress']/g['target']) if g['target']>0 else 0
+        st.progress(pct)
         st.write(f"{g['progress']}/{g['target']}")
+        if g['progress'] < g['target']:
+            all_done = False
+    # offer reward if all completed and not yet claimed
+    if all_done and not st.session_state.weekly_reward_claimed:
+        if st.button("Claim Weekly Completion Reward"):
+            update_xp(50, st.session_state.user_account if st.session_state.user_account else None)
+            st.session_state.stats_simple["Consistency"] = min(100, st.session_state.stats_simple.get("Consistency",0)+3)
+            st.session_state.weekly_reward_claimed = True
+            st.success("Reward claimed: +50 XP, +3 Consistency!")
+    elif st.session_state.weekly_reward_claimed:
+        st.info("Weekly reward already claimed.")
 
 
 def render_progress_dashboard():
@@ -1190,7 +1292,7 @@ if st.session_state.user_account is None:
                         "avatar": st.session_state.selected_avatar,
                         "level": 1,
                         "xp": 0,
-                        "xp_to_next": 200,
+                        "xp_to_next": xp_threshold_for_level(1),
                         "achievements": ["Welcome Warrior"],
                         "join_date": time.time(),
                         # profile tracking - force first‑time setup
@@ -1317,6 +1419,7 @@ else:
             </div>
         </div>
         <p>XP: {user["xp"]} / {user["xp_to_next"]}</p>
+        <p style="font-size:0.9rem; opacity:0.8;">XP Needed to Level Up: {max(user["xp_to_next"] - user["xp"], 0)}</p>
         <div class="xp-bar">
             <div class="xp-fill" style="width: {user["xp"] / user["xp_to_next"] * 100}%"></div>
         </div>
@@ -1324,11 +1427,15 @@ else:
     """, unsafe_allow_html=True)
 
 
-    # Main game tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["⚔️ Quests", "🏋️ Physique Builder", "🏆 Achievements", "📊 Stats", "👥 Leaderboard"])
+    # Main game tabs renamed per new structure
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏠 Dashboard", "💪 Workouts", "📈 Progress", "📅 Weekly Goals", "👤 Profile"])
 
     with tab1:
-        st.header("⚔️ Daily Quests")
+        st.header("🏠 Dashboard")
+        # show quick summary metrics
+        render_progress_dashboard()
+        st.markdown("---")
+        render_weekly_goals()
 
         quests = [
             {
@@ -1386,30 +1493,13 @@ else:
             """, unsafe_allow_html=True)
 
             if quest["active"] and st.button(f"Complete '{quest['title']}'", key=f"complete_{quest['title'].replace(' ', '_')}"):
-                xp_reward = int(quest["reward"].split()[0])
-                user["xp"] += xp_reward
-
-                if user["xp"] >= user["xp_to_next"]:
-                    user["level"] += 1
-                    user["xp"] = user["xp"] - user["xp_to_next"]
-                    user["xp_to_next"] = int(user["xp_to_next"] * 1.2)
-                    st.balloons()
-                    st.success(f"🎉 Level Up! You are now Level {user['level']}!")
-
-                    # Avatar evolution message
-                    new_avatar_gif = avatar_data["level_gifs"].get(user["level"], avatar_gif)
-                    if new_avatar_gif != avatar_gif:
-                        st.info(f"🌟 Your avatar evolved! {avatar_data['name']} is now more powerful!")
-
-                else:
+                    xp_reward = int(quest["reward"].split()[0])
+                    # use helper which handles leveling & persistence
+                    update_xp(xp_reward, user)
                     st.success(f"Quest completed! +{xp_reward} XP")
-                
-                # Save user data to JSON file
-                save_user(user)
-                st.session_state.user_account = user
-                time.sleep(0.5)
-                st.rerun()
-
+                    # avatar evolution handled in update_xp if level changes
+                    time.sleep(0.5)
+                    st.rerun()
         # --- new features below existing quests ---
         st.markdown("---")
         render_daily_tasks()
@@ -1417,7 +1507,9 @@ else:
         render_progress_dashboard()
 
     with tab2:
-        st.header("🏋️ Physique Builder Engine")
+        st.header("💪 Workouts")
+        # workout details and tasks
+        render_daily_tasks()
 
         # Sidebar inputs for physique builder
         st.sidebar.header("⚡ Profile Setup")
@@ -1525,7 +1617,42 @@ else:
                 st.write(f"• {rec}")
 
     with tab3:
-        st.header("🏆 Achievements")
+        st.header("📈 Progress")
+        # charts and summary
+        # improvement overview card
+        if st.session_state.user_account:
+            user = st.session_state.user_account
+            st.markdown(f"**Current Level:** {st.session_state.level}")
+            total_xp = sum(e['xp'] for e in st.session_state.progress_history)
+            st.markdown(f"**Total XP Earned:** {total_xp}")
+            st.markdown(f"**Longest Streak:** {st.session_state.longest_streak} Days")
+            workouts = len(st.session_state.workout_log)
+            minutes = sum(e.get('minutes',0) for e in st.session_state.workout_log)
+            avg = minutes / workouts if workouts>0 else 0
+            st.markdown(f"**Workouts This Month:** {workouts}")
+            st.markdown(f"**Average Workout Length:** {avg:.0f} minutes")
+            st.markdown(f"**Total Workout Minutes:** {minutes}")
+            # chart XP over time
+            import pandas as pd
+            if st.session_state.progress_history:
+                df = pd.DataFrame(st.session_state.progress_history)
+                df['time'] = pd.to_datetime(df['time'], unit='s')
+                st.line_chart(df.set_index('time')['xp'].cumsum())
+                # pace commentary
+                total_days = (df['time'].max() - df['time'].min()).days + 1
+                avg_xp_per_day = df['xp'].sum() / total_days if total_days>0 else 0
+                st.markdown(f"**Avg XP/day:** {avg_xp_per_day:.1f}")
+                if avg_xp_per_day < 80:
+                    st.info("Pace: Light workout day (~60–80 XP)")
+                elif avg_xp_per_day < 120:
+                    st.info("Pace: Normal workout day (~80–120 XP)")
+                else:
+                    st.info("Pace: Hard workout day (~120–160 XP)")
+            # stat growth chart
+            if st.session_state.stats_history:
+                df2 = pd.DataFrame(st.session_state.stats_history)
+                df2['time'] = pd.to_datetime(df2['time'], unit='s')
+                st.line_chart(df2.set_index('time').drop(columns=['time']))
 
         achievements = [
             {"name": "First Steps", "description": "Complete your first workout", "unlocked": True, "rarity": "Common"},
@@ -1567,7 +1694,8 @@ else:
                 """, unsafe_allow_html=True)
 
     with tab4:
-        st.header("📊 Character Stats")
+        st.header("� Weekly Goals")
+        render_weekly_goals()
 
         # Character stats grid
         # build stats from session state so we can track them
@@ -1597,7 +1725,9 @@ else:
                 """, unsafe_allow_html=True)
 
     with tab5:
-        st.header("👥 Global Leaderboard")
+        st.header("� Profile")
+        # replicate sidebar profile form here for convenience
+        render_profile_simple()
 
         # Sort users by level (descending), then by XP (descending)
         sorted_users = sorted(st.session_state.all_users,
@@ -1667,24 +1797,12 @@ else:
     with col2:
         if st.button("📝 Log Workout", use_container_width=True):
             st.success("Workout logged! +50 XP")
-            user["xp"] += 50
-            if user["xp"] >= user["xp_to_next"]:
-                user["level"] += 1
-                user["xp"] = user["xp"] - user["xp_to_next"]
-                user["xp_to_next"] = int(user["xp_to_next"] * 1.2)
-                st.balloons()
-                st.info(f"🎉 Level Up! You are now Level {user['level']}!")
-            # Save user data to JSON file
-            save_user(user)
-            st.session_state.user_account = user
+            update_xp(50, user)
     with col3:
         if st.button("🎁 Daily Reward", use_container_width=True):
             reward_xp = random.randint(10, 50)
-            user["xp"] += reward_xp
+            update_xp(reward_xp, user)
             st.success(f"Daily reward claimed! +{reward_xp} XP")
-            # Save user data to JSON file
-            save_user(user)
-            st.session_state.user_account = user
     with col4:
         if st.button("🔄 Switch Account", use_container_width=True):
             if st.checkbox("Confirm account switch"):
